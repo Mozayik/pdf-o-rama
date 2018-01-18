@@ -47,6 +47,7 @@
   "dependencies": {
     "auto-bind2": "^1.0.3",
     "chalk": "^2.3.0",
+    "hummus": "^1.0.83",
     "minimist": "^1.2.0",
     "temp": "^0.8.3"
   }

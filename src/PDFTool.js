@@ -1,6 +1,7 @@
 import parseArgs from 'minimist'
 import { fullVersion } from './version'
 import path from 'path'
+import fs from 'fs'
 import process from 'process'
 import temp from 'temp'
 import autoBind from 'auto-bind2'
@@ -8,37 +9,114 @@ import hummus from 'hummus'
 import * as Util from './util'
 
 export class PDFTool {
-  constructor(log) {
+  constructor(toolName, log) {
     autoBind(this)
+    this.toolName = toolName
     this.log = log
   }
 
   async run(argv) {
     const options = {
+      string: ['output-file'],
       boolean: [ 'help', 'version' ],
+      alias: {
+        'o': 'output-file'
+      }
     }
 
     this.args = parseArgs(argv, options)
 
-    if (this.args._.length < 1) {
-      this.log.error(`Please specify a command or 'help'`)
-      return -1
-    }
+    let command = 'help'
 
-    const command = this.args._.shift()
+    if (this.args._.length > 0) {
+      command = this.args._[0].toLowerCase()
+    }
 
     if (this.args.version) {
       this.log.info(`${fullVersion}`)
       return 0
     }
 
-    if (this.args.help || !command || command === 'help') {
-      this.log.info(`
-Usage: pdf-o-rama <cmd> [options]
+    switch (command) {
+      case 'concat':
+        if (this.args.help) {
+          this.log.info(`
+Usage: ${this.toolName} concat <pdf1> <pdf2> [<pdf3> ...] [options]
+
+Options:
+  --output-file, -o  Output PDF file
+
+Notes:
+  File will be concatenated in the order in which they are given.
+`)
+          return 0
+        }
+        return await this.concatPDFs()
+      case 'fields':
+        if (this.args.help) {
+          this.log.info(`
+Usage: ${this.toolName} fields <pdf>
+
+Options:
+  --output-file, -o  Output JSON file
+
+Notes:
+Outputs a JSON file containing information for all the AcroForm fields in the document
+`)
+          return 0
+        }
+        return await this.readAcroFormFields()
+      case 'strip':
+        if (this.args.help) {
+          this.log.info(`
+Usage: ${this.toolName} strip <pdf> [options]
+
+Options:
+  --output-file, -o  Output file
+
+Notes:
+Strips any AcroForm from the document and compresses the resulting document.
+`)
+          return 0
+        }
+        return await this.removeAcroForm()
+      case 'watermark':
+        if (this.args.help) {
+          this.log.info(`
+Usage: ${this.toolName} watermark <pdf> [options]
+
+Options:
+  --watermark , -w   Watermarked PDF document
+  --output-file, -o  Output file
+
+Notes:
+Adds a watermark imahe underneath the existing content of each page of the given PDF.
+`)
+          return 0
+        }
+        return await this.addWatermark()
+      case 'fill':
+      if (this.args.help) {
+        this.log.info(`
+Usage: ${this.toolName} watermark <pdf> [options]
+
+Options:
+--watermark , -w   Watermark PDF document
+--output-file, -o  Output file
+
+Notes:
+Adds a watermark image underneath the existing content of each page of the given PDF.
+`)
+          return 0
+        }
+        return await this.fillPDFFields(project)
+      case 'help':
+        this.log.info(`
+Usage: ${this.toolName} <cmd> [options]
 
 Commands:
 help              Shows this help
-concat            Concatenate multiple PDFs
+concat            Concatenate two or more PDFs
 fields            Extract the field data from a PDF
 strip             Strip an AcroForm from a PDF
 watermark         Add a watermark to every page of a PDF
@@ -48,20 +126,7 @@ Global Options:
   --help          Shows this help.
   --version       Shows the tool version.
 `)
-      return 0
-    }
-
-    switch (command.toLowerCase()) {
-      case 'concat':
-        return await this.concatPDFs()
-      case 'fields':
-        return await this.readAcroFormFields()
-      case 'strip':
-        return await this.removeAcroForm()
-      case 'watermark':
-        return await this.addWatermark()
-      case 'fill':
-        return await this.fillPDFFields(project)
+        return 0
       default:
         this.log.error(`Unknown command ${command}.  Use --help to see available commands`)
         return -1
@@ -71,10 +136,10 @@ Global Options:
   }
 
   async concatPDFs() {
-    const filenames = this.args._
+    const filenames = this.args._.shift()
 
-    if (!filenames.length === 0) {
-      this.log.error('Must specify at least one PDF file to concatenate')
+    if (!filenames.length < 2) {
+      this.log.error('Must specify at least two PDF files to concatenate')
       return -1
     }
 
@@ -85,7 +150,7 @@ Global Options:
       }
     }
 
-    const pdfWriter = hummus.createWriter(args['output-file'])
+    const pdfWriter = hummus.createWriter(this.args['output-file'])
 
     for (let filename of filenames) {
       pdfWriter.appendPDFPagesFromPDF(filename)
@@ -95,7 +160,7 @@ Global Options:
   }
 
   async dumpPDFFields() {
-    const filename = this.args._[0]
+    const filename = this.args._.shift()[0]
 
     if (!filename) {
       this.log.error('Must specify a PDF from which to extract information')

@@ -6,7 +6,21 @@ import process from 'process'
 import temp from 'temp'
 import autoBind from 'auto-bind2'
 import hummus from 'hummus'
-import * as Util from './util'
+import util from 'util'
+
+fs.statAsync = util.promisify(fs.stat)
+fs.readFileAsync = util.promisify(fs.readFile)
+
+function toText(item) {
+  if(item.getType() === hummus.ePDFObjectLiteralString) {
+    return item.toPDFLiteralString().toText()
+  }
+  else if(item.getType() === hummus.ePDFObjectHexString) {
+    return item.toPDFHexString().toText()
+  } else {
+    return item.value
+  }
+}
 
 export class PDFTool {
   constructor(toolName, log) {
@@ -30,6 +44,7 @@ export class PDFTool {
 
     if (this.args._.length > 0) {
       command = this.args._[0].toLowerCase()
+      this.args._.shift()
     }
 
     if (this.args.version) {
@@ -65,7 +80,7 @@ Outputs a JSON file containing information for all the AcroForm fields in the do
 `)
           return 0
         }
-        return await this.readAcroFormFields()
+        return await this.dumpAcroFormFields()
       case 'strip':
         if (this.args.help) {
           this.log.info(`
@@ -136,69 +151,92 @@ Global Options:
   }
 
   async concatPDFs() {
-    const filenames = this.args._.shift()
+    const fileNames = this.args._
 
-    if (!filenames.length < 2) {
+    if (fileNames.length < 2) {
       this.log.error('Must specify at least two PDF files to concatenate')
       return -1
     }
 
-    for (let filename of filenames) {
-      if (!fs.existsSync(filename)) {
-        this.log.error(`File '${filename}' does not exist`)
+    for (let fileName of fileNames) {
+      if (!await fs.statAsync(fileName)) {
+        this.log.error(`File '${fileName}' does not exist`)
         return -1
       }
     }
 
-    const pdfWriter = hummus.createWriter(this.args['output-file'])
+    const outputFile = this.args['output-file']
 
-    for (let filename of filenames) {
-      pdfWriter.appendPDFPagesFromPDF(filename)
+    if (!outputFile) {
+      this.log.error('No output file specified')
+      return -1
+    }
+
+    const pdfWriter = hummus.createWriter(outputFile)
+
+    for (let fileName of fileNames) {
+      pdfWriter.appendPDFPagesFromPDF(fileName)
     }
 
     pdfWriter.end()
   }
 
-  async dumpPDFFields() {
-    const filename = this.args._.shift()[0]
+  async dumpAcroFormFields() {
+    const fileName = this.args._[0]
 
-    if (!filename) {
+    if (!fileName) {
       this.log.error('Must specify a PDF from which to extract information')
       return -1
     }
 
-    if (!await fs.exists(filename)) {
-      this.log.error(`File '${filename}' does not exist`)
+    if (!await fs.statAsync(fileName)) {
+      this.log.error(`File '${fileName}' does not exist`)
       return -1
     }
 
-    const pdfReader = hummus.createReader(filename)
-    let formFields = null
+    const outputFileName = this.args['output-file']
 
-    try {
-      this.readAcroFormFields(pdfReader)
-    } catch (e) {
-      this.log.error(e.message)
+    if (!outputFileName) {
+      this.log.error(`No output file specified`)
       return -1
     }
 
-    const formName = path.basename(filename, '.pdf')
+    this.pdfReader = hummus.createReader(fileName)
 
-    if (this.invalidChars.test(formName)) {
-      this.log.error(`File name ${filename} must only contain charecters '${this.validChars}'`)
-      return -1
+    const catalogDict = this.pdfReader
+      .queryDictionaryObject(this.pdfReader.getTrailer(), 'Root').toPDFDictionary()
+
+    if (!catalogDict.exists('AcroForm')) {
+      throw new Error('PDF does not have an AcroForm')
     }
 
-    const writeable = process.stdout
+    this.acroformDict = this.pdfReader
+      .queryDictionaryObject(catalogDict, 'AcroForm').toPDFDictionary()
 
-    fields.forEach(field => {
-      writeable.write(JSON5.stringify(field, undefined, '  '))
-    })
+    let fieldsArray = this.acroformDict.exists('Fields') ?
+      this.pdfReader.queryDictionaryObject(this.acroformDict, 'Fields').toPDFArray() :
+      null
 
+    // Page map is used to get page number from page object ID
+    const numPages = this.pdfReader.getPagesCount()
+
+    this.pageMap = {}
+    for (let i = 0; i < numPages; i++) {
+      this.pageMap[this.pdfReader.getPageObjectID(i)] = i
+    }
+
+    const writeable = fs.createWriteStream(outputFileName, {flags: 'a'})
+
+    if (fieldsArray) {
+      const fields = this.parseFieldsArray(fieldsArray, {}, '')
+      writeable.write(JSON.stringify({ fields }, undefined, '  '))
+    }
+
+    writeable.end()
     return 0
   }
 
-  fillPDFFields() {
+  async fillPDFFields() {
     const pdfFilename = this.args._[0]
     const json5Filename = this.args._[1]
     const filledPDFFilename = this.args._[2]
@@ -211,7 +249,7 @@ Global Options:
     let data = null
 
     try {
-      data = JSON5.parse(fs.readFileSync(json5Filename, { encoding: 'utf8' }))
+      data = await JSON5.parse(fs.readFileAsync(json5Filename, { encoding: 'utf8' }))
     } catch (e) {
       this.log.error(`Unable to read data file '${json5Filename}'. ${e.message}`)
       return -1
@@ -232,7 +270,7 @@ Global Options:
     pdfWriter.end()
   }
 
-  removeAcroform(pdfWriter) {
+  removeAcroForm(pdfWriter) {
     const reader = this.writer.getModifiedFileParser()
     let catalogDict = reader.queryDictionaryObject(reader.getTrailer(), 'Root').toPDFDictionary()
     let copyingContext = writer.createPDFCopyingContextForModifiedFile()
@@ -260,53 +298,22 @@ Global Options:
     objectsContext.endDictionary(modifiedAcroFormDict)
   }
 
-  readAcroFormFields(pdfReader) {
-    this.pdfReader = pdfReader
-
-    const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), 'Root').toPDFDictionary()
-
-    if (!catalogDict.exists('AcroForm')) {
-      throw new Error('PDF does not have an AcroForm')
-    }
-
-    this.acroformDict = this.pdfReader.queryDictionaryObject(catalogDict, 'AcroForm').toPDFDictionary()
-
-    let fieldsArray = this.acroformDict.exists('Fields') ?
-      this.pdfReader.queryDictionaryObject(this.acroformDict, 'Fields').toPDFArray() :
-      null
-
-    if (!fieldsArray) {
-      return null
-    }
-
-    const numPages = pdfReader.getPagesCount()
-
-    this.pageMap = {}
-    for (let i = 0; i < numPages; i++) {
-      this.pageMap[pdfReader.getPageObjectID(i)] = i
-    }
-
-    return this.parseFieldsArray(fieldsArray, {}, '')
-  }
-
   parseKids(fieldDictionary, inheritedProperties, baseFieldName) {
     let localEnv = {}
 
-    // prep some inherited values and push env
-    if (fieldDictionary.exists('FT')) {
+  if (fieldDictionary.exists('FT')) {
       localEnv['FT'] = fieldDictionary.queryObject('FT').toString()
     }
     if (fieldDictionary.exists('Ff')) {
       localEnv['Ff'] = fieldDictionary.queryObject('Ff').toNumber()
     }
     if (fieldDictionary.exists('DA')) {
-      localEnv['DA'] = Util.toText(fieldDictionary.queryObject('DA'))
+      localEnv['DA'] = toText(fieldDictionary.queryObject('DA'))
     }
     if (fieldDictionary.exists('Opt')) {
       localEnv['Opt'] = fieldDictionary.queryObject('Opt').toPDFArray()
     }
 
-    // parse kids
     let result = this.parseFieldsArray(
       this.pdfReader.queryDictionaryObject(fieldDictionary, 'Kids').toPDFArray(),
       {...inheritedProperties, ...localEnv},
@@ -314,7 +321,6 @@ Global Options:
 
     return result
   }
-
 
   parseOnOffValue(fieldDictionary) {
     if (fieldDictionary.exists('V')) {
@@ -373,7 +379,7 @@ Global Options:
     let valueField = this.pdfReader.queryDictionaryObject(fieldDictionary,fieldName)
 
     if (valueField.getType() == hummus.ePDFObjectLiteralString) {
-      return Util.toText(valueField)
+      return toText(valueField)
     } else if (valueField.getType() == hummus.ePDFObjectStream) {
       let bytes = []
       let readStream = pdfReader.startReadingFromStream(valueField.toPDFStream())
@@ -397,10 +403,10 @@ Global Options:
       if (valueField.getType() == hummus.ePDFObjectLiteralString ||
         valueField.getType() == hummus.ePDFObjectHexString) {
         // text string. read into value
-        return Util.toText(valueField)
+        return toText(valueField)
       } else if (valueField.getType == hummus.ePDFObjectArray) {
         let arrayOfStrings = valueField.toPDFArray().toJSArray()
-        return arrayOfStrings.map(Util.toText)
+        return arrayOfStrings.map(toText)
       } else {
         return undefined
       }
@@ -461,15 +467,23 @@ Global Options:
   }
 
   parseField(fieldDictionary, inheritedProperties, baseFieldName) {
-    let fieldNameT = fieldDictionary.exists('T') ? Util.toText(fieldDictionary.queryObject('T')) : undefined
-    let fieldNameTU = fieldDictionary.exists('TU') ? Util.toText(fieldDictionary.queryObject('TU')) : undefined
-    let fieldNameTM = fieldDictionary.exists('TM') ? Util.toText(fieldDictionary.queryObject('TM')) : undefined
+    let fieldNameT = fieldDictionary.exists('T') ? toText(fieldDictionary.queryObject('T')) : undefined
+    let fieldNameTU = fieldDictionary.exists('TU') ? toText(fieldDictionary.queryObject('TU')) : undefined
+    let fieldNameTM = fieldDictionary.exists('TM') ? toText(fieldDictionary.queryObject('TM')) : undefined
     let fieldFlags = fieldDictionary.exists('Ff') ? fieldDictionary.queryObject('Ff').toNumber() : undefined
     let fieldRect = fieldDictionary.exists('Rect') ? fieldDictionary.queryObject('Rect').toPDFArray().toJSArray() : undefined
     let fieldP = fieldDictionary.exists('P') ? fieldDictionary.queryObject('P').toPDFIndirectObjectReference().getObjectID() : undefined
 
     fieldFlags = (fieldFlags === undefined ? inheritedProperties['Ff'] : fieldFlags)
     fieldFlags = fieldFlags || 0
+
+    if (fieldRect) {
+      fieldRect = {
+        llx: fieldRect[0].value,
+        lly: fieldRect[1].value,
+        urx: fieldRect[2].value,
+        ury: fieldRect[3].value}
+    }
 
     // Assume that if there's no T and no Kids, this is a widget annotation which is not a field
     if (fieldNameT === undefined &&
@@ -520,10 +534,6 @@ Global Options:
       }
     }
 
-    if (result.length == 0) {
-      return null
-    } else {
-      return result
-    }
+    return result
   }
 }

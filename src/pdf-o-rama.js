@@ -13,7 +13,7 @@ const log = {
 const tool = new PDFTool(path.basename(process.argv[1], '.js'), log)
 
 tool.run(process.argv.slice(2)).then((exitCode) => {
-  process.exit(exitCode)
+  process.exitCode = exitCode
 }).catch((err) => {
   console.error(err)
 })

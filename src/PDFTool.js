@@ -236,6 +236,92 @@ Global Options:
     return 0
   }
 
+  startModifiedDictionaryExcluding(originalDict, excludedKeys) {
+    let originalDictJS = originalDict.toJSObject()
+    let newDict = this.objectsContext.startDictionary()
+
+    Object.getOwnPropertyNames(originalDictJS).forEach((element) => {
+      if (!excludedKeys.includes(element)) {
+        newDict.writeKey(element)
+        this.copyingContext.copyDirectObjectAsIs(originalDictJS[element])
+      }
+    })
+
+    return newDict
+  }
+
+  async removeAcroForm() {
+    const fileName = this.args._[0]
+
+    if (!fileName) {
+      this.log.error('Must specify a PDF from which to remove the AcroForm')
+      return -1
+    }
+
+    if (!await fs.statAsync(fileName)) {
+      this.log.error(`File '${fileName}' does not exist`)
+      return -1
+    }
+
+    const outputFileName = this.args['output-file']
+
+    if (!outputFileName) {
+      this.log.error(`No output file specified`)
+      return -1
+    }
+
+    this.pdfWriter = hummus.createWriterToModify(fileName, { modifiedFilePath: outputFileName })
+    this.pdfReader = this.pdfWriter.getModifiedFileParser()
+
+    const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), 'Root').toPDFDictionary()
+
+    if (catalogDict.exists('AcroForm')) {
+      // Do some setup
+      const catalogObjectID = this.pdfReader.getTrailer().queryObject('Root').toPDFIndirectObjectReference().getObjectID()
+
+      this.copyingContext = this.pdfWriter.createPDFCopyingContextForModifiedFile()
+      this.objectsContext = this.pdfWriter.getObjectsContext()
+
+      // Write a new Root object without the AcroForm field
+      this.objectsContext.startModifiedIndirectObject(catalogObjectID);
+      let modifiedDict = this.startModifiedDictionaryExcluding(catalogDict, ['AcroForm'])
+
+      this.objectsContext
+        .endDictionary(modifiedDict) // The new catalog dictionary
+        .endIndirectObject() // The new indirect object for the catalog ID
+
+      // Delete the root AcroForm object
+      // TODO: Recursively delete all children of the root form
+      const acroFormEntry = catalogDict.queryObject('AcroForm')
+
+      if (acroFormEntry.getType() === hummus.ePDFObjectIndirectObjectReference) {
+        const acroformObjectID = acroFormEntry.toPDFIndirectObjectReference().getObjectID()
+
+        this.objectsContext.deleteObject(acroformObjectID)
+      }
+
+      // Remove all page annotations
+      const numPages = this.pdfReader.getPagesCount()
+
+      this.pageMap = {}
+      for (let i = 0; i < numPages; i++) {
+        const pageID = this.pdfReader.getPageObjectID(i)
+        const pageDict = this.pdfReader.parsePageDictionary(i)
+
+        this.objectsContext.startModifiedIndirectObject(pageID)
+        let modifiedPageDict = this.startModifiedDictionaryExcluding(pageDict, ['Annots'])
+        this.objectsContext
+          .endDictionary(modifiedPageDict)
+          .endIndirectObject()
+        }
+
+        // TODO: Recursively delete all annotation objects
+    }
+
+    this.pdfWriter.end()
+    return 0
+  }
+
   async fillPDFFields() {
     const pdfFilename = this.args._[0]
     const json5Filename = this.args._[1]
@@ -270,38 +356,10 @@ Global Options:
     pdfWriter.end()
   }
 
-  removeAcroForm(pdfWriter) {
-    const reader = this.writer.getModifiedFileParser()
-    let catalogDict = reader.queryDictionaryObject(reader.getTrailer(), 'Root').toPDFDictionary()
-    let copyingContext = writer.createPDFCopyingContextForModifiedFile()
-    let objectsContext = writer.getObjectsContext()
-
-    const startModifiedDictionary = (originalDict, excludedKeys) => {
-      let originalDictJs = originalDict.toJSObject()
-      let newDict = objectsContext.startDictionary()
-
-      Object.getOwnPropertyNames(originalDictJs).forEach((element) => {
-        if (!excludedKeys.has(element)) {
-          newDict.writeKey(element)
-          copyingContext.copyDirectObjectAsIs(originalDictJs[element])
-        }
-      })
-
-      return newDict
-    }
-
-    if (!catalogDict.exists('AcroForm')) {
-      throw new Error('PDF does not have an AcroForm')
-    }
-
-    startModifiedDictionary(catalogDict, ['AcroForm'])
-    objectsContext.endDictionary(modifiedAcroFormDict)
-  }
-
   parseKids(fieldDictionary, inheritedProperties, baseFieldName) {
     let localEnv = {}
 
-  if (fieldDictionary.exists('FT')) {
+    if (fieldDictionary.exists('FT')) {
       localEnv['FT'] = fieldDictionary.queryObject('FT').toString()
     }
     if (fieldDictionary.exists('Ff')) {

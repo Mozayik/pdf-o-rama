@@ -1,0 +1,107 @@
+{
+  "fields": [
+    {
+      "name": "name",
+      "fullName": "name",
+      "rect": [
+        173.111,
+        696.781,
+        442.595,
+        718.781
+      ],
+      "page": 0,
+      "type": "plaintext",
+      "value": "Philip Bilko"
+    },
+    {
+      "name": "rank",
+      "fullName": "rank",
+      "rect": [
+        173.111,
+        655.55,
+        323.111,
+        677.55
+      ],
+      "page": 0,
+      "type": "plaintext",
+      "value": "Sergeant"
+    },
+    {
+      "name": "serialNo",
+      "fullName": "serialNo",
+      "rect": [
+        173.111,
+        610.862,
+        323.111,
+        632.862
+      ],
+      "page": 0,
+      "type": "plaintext",
+      "value": "123456"
+    },
+    {
+      "name": "qrcode1",
+      "fullName": "qrcode1",
+      "rect": [
+        246.76,
+        250.283,
+        357.718,
+        359.663
+      ],
+      "page": 0,
+      "type": "qrcode",
+      "value": "abcdefg"
+    },
+    {
+      "name": "ssn",
+      "fullName": "ssn",
+      "rect": [
+        172.901,
+        568.711,
+        372.591,
+        590.711
+      ],
+      "page": 0,
+      "type": "highlight"
+    },
+    {
+      "name": "signHere1",
+      "fullName": "signHere1",
+      "rect": [
+        390.421,
+        483.522,
+        497.069,
+        615.804
+      ],
+      "page": 0,
+      "type": "signhere",
+      "value": "Mr Jones"
+    },
+    {
+      "name": "maleChk",
+      "fullName": "maleChk",
+      "rect": [
+        144.898,
+        418.745,
+        162.898,
+        436.745
+      ],
+      "page": 0,
+      "type": "checkbox",
+      "value": false
+    },
+    {
+      "name": "femaleChk",
+      "fullName": "femaleChk",
+      "rect": [
+        299.965,
+        418.109,
+        317.965,
+        436.109
+      ],
+      "page": 0,
+      "type": "checkbox",
+      "value": true
+    }
+  ]
+}

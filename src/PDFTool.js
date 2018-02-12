@@ -95,7 +95,7 @@ Strips any AcroForm from the document and compresses the resulting document.
 `)
           return 0
         }
-        return await this.removeAcroForm()
+        return await this.stripAcroFormAndAnnotations()
       case 'watermark':
         if (this.args.help) {
           this.log.info(`
@@ -160,7 +160,7 @@ Global Options:
     }
 
     for (let fileName of fileNames) {
-      if (!await fs.statAsync(fileName)) {
+      if (!fs.existsSync(fileName)) {
         this.log.error(`File '${fileName}' does not exist`)
         return -1
       }
@@ -226,7 +226,7 @@ Global Options:
       this.pageMap[this.pdfReader.getPageObjectID(i)] = i
     }
 
-    const writeable = fs.createWriteStream(outputFileName, {flags: 'a'})
+    const writeable = fs.createWriteStream(outputFileName)
 
     if (fieldsArray) {
       const fields = this.parseFieldsArray(fieldsArray, {}, '')
@@ -251,7 +251,9 @@ Global Options:
     return newDict
   }
 
-  async removeAcroForm() {
+  async stripAcroFormAndAnnotations() {
+    // TODO: A better way to do this would be to just copy all the pages one-by-one to the new file. See addWatermark()
+
     const fileName = this.args._[0]
 
     if (!fileName) {
@@ -323,15 +325,15 @@ Global Options:
   }
 
   async fillPDFFields() {
-    const pdfFilename = this.args._[0]
-    const json5Filename = this.args._[1]
-    const filledPDFFilename = this.args._[2]
+    const fileName = this.args._[0]
 
-    if (!pdfFilename || !json5Filename) {
-      this.log.error('Must specify an input PDF file, a data file and an output PDF file')
+    if (!fileName) {
+      this.log.error('Must specify an input PDF file')
       return -1
     }
 
+    const outputFileName = this.args['output-file']
+    const json5FileName = this.args['data-file']
     let data = null
 
     try {
@@ -576,7 +578,7 @@ Global Options:
         break
       }
       case 'Tx': {
-        result['isFileSelect'] = !!(flags>>20 & 1)
+        // result['isFileSelect'] = !!(flags>>20 & 1)
         if ((flags>>25) & 1) {
           result['type'] = 'richtext'
           // rich text, value in 'RV'
@@ -613,11 +615,7 @@ Global Options:
     fieldFlags = fieldFlags || 0
 
     if (fieldRect) {
-      fieldRect = {
-        llx: fieldRect[0].value,
-        lly: fieldRect[1].value,
-        urx: fieldRect[2].value,
-        ury: fieldRect[3].value}
+      fieldRect = fieldRect.map(r => r.value)
     }
 
     // Assume that if there's no T and no Kids, this is a widget annotation which is not a field
@@ -631,9 +629,9 @@ Global Options:
     let result = {
       name: fieldNameT,
       fullName: fieldNameT === undefined ? undefined : (baseFieldName + fieldNameT),
-      alternateName: fieldNameTU,
-      mappingName: fieldNameTM,
-      isNoExport: !!((fieldFlags>>2) & 1),
+      //alternateName: fieldNameTU,
+      //mappingName: fieldNameTM,
+      //isNoExport: !!((fieldFlags>>2) & 1),
       rect: fieldRect,
       page: this.pageMap[fieldP]
     }

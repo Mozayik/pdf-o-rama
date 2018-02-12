@@ -31,10 +31,11 @@ export class PDFTool {
 
   async run(argv) {
     const options = {
-      string: ['output-file'],
+      string: ['output-file', 'watermark-file' ],
       boolean: [ 'help', 'version' ],
       alias: {
-        'o': 'output-file'
+        'o': 'output-file',
+        'w': 'watermark-file'
       }
     }
 
@@ -101,8 +102,8 @@ Strips any AcroForm from the document and compresses the resulting document.
 Usage: ${this.toolName} watermark <pdf> [options]
 
 Options:
-  --watermark , -w   Watermarked PDF document
-  --output-file, -o  Output file
+  --watermark-file , -w   Watermarked PDF document
+  --output-file, -o       Output file
 
 Notes:
 Adds a watermark imahe underneath the existing content of each page of the given PDF.
@@ -303,7 +304,6 @@ Global Options:
       // Remove all page annotations
       const numPages = this.pdfReader.getPagesCount()
 
-      this.pageMap = {}
       for (let i = 0; i < numPages; i++) {
         const pageID = this.pdfReader.getPageObjectID(i)
         const pageDict = this.pdfReader.parsePageDictionary(i)
@@ -354,6 +354,83 @@ Global Options:
     }
 
     pdfWriter.end()
+  }
+
+  async addWatermark() {
+    const fileName = this.args._[0]
+
+    if (!fileName) {
+      this.log.error('Must specify a PDF from which to remove the AcroForm')
+      return -1
+    }
+
+    if (!await fs.statAsync(fileName)) {
+      this.log.error(`File '${fileName}' does not exist`)
+      return -1
+    }
+
+    const watermarkFileName = this.args['watermark-file']
+
+    if (!watermarkFileName) {
+      this.log.error('No watermark file specified')
+      return -1
+    }
+
+    if (!await fs.statAsync(watermarkFileName)) {
+      this.log.error(`File '${watermarkFileName}' does not exist`)
+      return -1
+    }
+
+    const outputFileName = this.args['output-file']
+
+    if (!outputFileName) {
+      this.log.error('No output file specified')
+      return -1
+    }
+
+    this.pdfWriter = hummus.createWriter(outputFileName)
+    this.pdfReader = hummus.createReader(fileName)
+    const copyingContext = this.pdfWriter.createPDFCopyingContext(this.pdfReader)
+
+    // First, read in the watermark PDF and create a
+    const watermarkInfo = this.getPDFPageInfo(watermarkFileName, 0)
+
+    const formIDs = this.pdfWriter.createFormXObjectsFromPDF(
+      watermarkFileName, hummus.ePDFPageBoxMediaBox)
+
+    // Next, iterate through the pages from the source document
+    const numPages = this.pdfReader.getPagesCount()
+
+    for (let i = 0; i < numPages; i++) {
+      const page = this.pdfReader.parsePage(i)
+      const pageMediaBox = page.getMediaBox()
+      const newPage = this.pdfWriter.createPage(...pageMediaBox)
+
+      // Merge the page; this will also remove annotations.
+      copyingContext.mergePDFPageToPage(newPage, i)
+
+      const pageContext = this.pdfWriter.startPageContentContext(newPage)
+
+      pageContext
+        .q()
+        .cm(1, 0, 0, 1, (pageMediaBox[2] - watermarkInfo.mediaBox[2]) / 2, (pageMediaBox[3] - watermarkInfo.mediaBox[3]) / 2)
+        .doXObject(newPage.getResourcesDictionary().addFormXObjectMapping(formIDs[0]))
+        .Q()
+
+      this.pdfWriter.writePage(newPage)
+    }
+
+    this.pdfWriter.end()
+    return 0
+  }
+
+  getPDFPageInfo(fileName, pageNum) {
+    const pdfReader = hummus.createReader(fileName)
+    const page = pdfReader.parsePage(pageNum)
+
+    return {
+      mediaBox: page.getMediaBox()
+    }
   }
 
   parseKids(fieldDictionary, inheritedProperties, baseFieldName) {

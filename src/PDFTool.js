@@ -376,9 +376,11 @@ Global Options:
     this.pdfReader = this.pdfWriter.getModifiedFileParser()
 
     let font = null
+    let fontDims = null
 
     if (fontFileName) {
       font = this.pdfWriter.getFontForFile(fontFileName)
+      fontDims = font.calculateTextDimensions('X',14)
     }
 
     const catalogDict = this.pdfReader
@@ -393,19 +395,23 @@ Global Options:
     for (let i = 0; i < numPages; i++) {
       const page = this.pdfReader.parsePage(i)
       const pageModifier = new hummus.PDFPageModifier(this.pdfWriter, 0)
-      const pageContext = pageModifier.startContext().getContext()
+      let pageContext = pageModifier.startContext().getContext()
       const fields = data.fields.filter(f => (f.page === i))
 
       for (let field of fields) {
+        const x = field.rect[0]
+        const y = field.rect[1]
+        const w = field.rect[2] - x
+        const h = field.rect[3] - y
+        const rise = h / 4.0
+        const halfH = h / 2
+
         switch (field.type) {
           case 'highlight':
             pageContext
               .q()
               .rg(1, 1, 0.6)
-              .re(
-                field.rect[0], field.rect[1],
-                field.rect[2] - field.rect[0],
-                field.rect[3] - field.rect[1])
+              .re(x, y, w, h)
               .f()
               .Q()
             break
@@ -414,12 +420,11 @@ Global Options:
               this.log.error('Font file must be specified for plaintext fields')
               return -1
             }
-            const rise = (field.rect[3] - field.rect[1]) / 4.0
             pageContext
               .q()
               .BT()
               .g(0)
-              .Tm(1, 0, 0, 1, field.rect[0], field.rect[1] + rise)
+              .Tm(1, 0, 0, 1, x, y + rise)
               .Tf(font, 14)
               .Tj(field.value)
               .ET()
@@ -428,10 +433,6 @@ Global Options:
           case 'qrcode':
             break
           case 'checkbox':
-            const x = field.rect[0]
-            const y = field.rect[1]
-            const w = field.rect[2] - x
-            const h = field.rect[3] - y
             pageContext
               .q()
               .G(0)
@@ -457,6 +458,51 @@ Global Options:
             pageContext.Q()
             break
           case 'signhere':
+            if (!font) {
+              this.log.error('Font file must be specified for signhere fields')
+              return -1
+            }
+
+            const q = Math.PI / 4.0
+
+            pageModifier.endContext()
+
+            let gsID = this.createOpacityExtGState(0.5)
+            let xobjectForm = this.pdfWriter.createFormXObject(0, 0, w, h)
+            let gsName = xobjectForm.getResourcesDictionary().addExtGStateMapping(gsID)
+
+            xobjectForm.getContentContext()
+              .q()
+              .gs(gsName)
+              .w(1.0)
+              .G(0)
+              .rg(1, 0.6, 1)
+              .m(0, halfH)
+              .l(halfH, 0)
+              .l(w, 0)
+              .l(w, h)
+              .l(halfH, h)
+              .h()
+              .B()
+              .BT()
+              .g(0)
+              .Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0)
+              .Tf(font, 12)
+              .Tj(`Sign Here ${field.value}`)
+              .ET()
+              .Q()
+            this.pdfWriter.endFormXObject(xobjectForm)
+
+            pageContext = pageModifier.startContext().getContext()
+
+            pageContext
+              .q()
+              .cm(1, 0, 0, 1, x, y + halfH)
+              .cm(Math.cos(q), Math.sin(q), -Math.sin(q), Math.cos(q), 0, 0)
+              .cm(1, 0, 0, 1, 0, -halfH)
+              // NOTE: The coordinate space of the XObjects is the same as the page!
+              .doXObject(xobjectForm)
+              .Q()
             break
           default:
             this.log.warning(`Unknown field type ${field.type}`)
@@ -468,6 +514,27 @@ Global Options:
     }
 
     this.pdfWriter.end()
+  }
+
+  createOpacityExtGState(opacity) {
+    const context = this.pdfWriter.getObjectsContext()
+    const id = context.startNewIndirectObject()
+    const dict = context.startDictionary()
+
+    dict
+      .writeKey('type')
+      .writeNameValue('ExtGState')
+      .writeKey('ca')
+    context
+      .writeNumber(opacity)
+      .endLine()
+    dict.writeKey('CA')
+    context
+      .writeNumber(opacity)
+      .endLine()
+      .endDictionary(dict)
+
+    return id
   }
 
   async addWatermark() {

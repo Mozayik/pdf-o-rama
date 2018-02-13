@@ -7,8 +7,8 @@ import temp from 'temp'
 import autoBind from 'auto-bind2'
 import hummus from 'hummus'
 import util from 'util'
+import JSON5 from 'json5'
 
-fs.statAsync = util.promisify(fs.stat)
 fs.readFileAsync = util.promisify(fs.readFile)
 
 function toText(item) {
@@ -31,11 +31,13 @@ export class PDFTool {
 
   async run(argv) {
     const options = {
-      string: ['output-file', 'watermark-file' ],
+      string: ['output-file', 'watermark-file', 'data-file', 'font-file' ],
       boolean: [ 'help', 'version' ],
       alias: {
         'o': 'output-file',
-        'w': 'watermark-file'
+        'w': 'watermark-file',
+        'd': 'data-file',
+        'f': 'font-file'
       }
     }
 
@@ -119,13 +121,15 @@ Usage: ${this.toolName} watermark <pdf> [options]
 Options:
 --watermark , -w   Watermark PDF document
 --output-file, -o  Output file
+--data-file, -d    JSON/JSON5 data file
+--font-file, -f    Font file name to use for text fields
 
 Notes:
-Adds a watermark image underneath the existing content of each page of the given PDF.
+Inserts 'form' data into the pages of the PDF.
 `)
           return 0
         }
-        return await this.fillPDFFields(project)
+        return await this.fillPDFFields()
       case 'help':
         this.log.info(`
 Usage: ${this.toolName} <cmd> [options]
@@ -190,7 +194,7 @@ Global Options:
       return -1
     }
 
-    if (!await fs.statAsync(fileName)) {
+    if (!fs.existsSync(fileName)) {
       this.log.error(`File '${fileName}' does not exist`)
       return -1
     }
@@ -208,7 +212,8 @@ Global Options:
       .queryDictionaryObject(this.pdfReader.getTrailer(), 'Root').toPDFDictionary()
 
     if (!catalogDict.exists('AcroForm')) {
-      throw new Error('PDF does not have an AcroForm')
+      this.log.error('PDF does not have an AcroForm')
+      return -1
     }
 
     this.acroformDict = this.pdfReader
@@ -261,7 +266,7 @@ Global Options:
       return -1
     }
 
-    if (!await fs.statAsync(fileName)) {
+    if (!fs.existsSync(fileName)) {
       this.log.error(`File '${fileName}' does not exist`)
       return -1
     }
@@ -332,30 +337,137 @@ Global Options:
       return -1
     }
 
+    if (!fs.existsSync(fileName)) {
+      this.log.error(`File '${fileName}' does not exist`)
+      return -1
+    }
+
     const outputFileName = this.args['output-file']
-    const json5FileName = this.args['data-file']
+
+    if (!outputFileName) {
+      this.log.error('No output file specified')
+      return -1
+    }
+
+    const jsonFileName = this.args['data-file']
+
+    if (!jsonFileName) {
+      this.log.error('Must specify a data file')
+      return -1
+    }
+
+    if (!fs.existsSync(jsonFileName)) {
+      this.log.error(`File '${jsonFileName}' does not exist`)
+      return -1
+    }
+
+    const fontFileName = this.args['font-file']
+
     let data = null
 
     try {
-      data = await JSON5.parse(fs.readFileAsync(json5Filename, { encoding: 'utf8' }))
+      data = await JSON5.parse(await fs.readFileAsync(jsonFileName, { encoding: 'utf8' }))
     } catch (e) {
-      this.log.error(`Unable to read data file '${json5Filename}'. ${e.message}`)
+      this.log.error(`Unable to read data file '${jsonFileName}'. ${e.message}`)
       return -1
     }
 
-    let pdfWriter = hummus.createWriterToModify(pdfFilename, {
-      modifiedFilePath: filledPDFFilename
-    })
+    this.pdfWriter = hummus.createWriterToModify(fileName, { modifiedFilePath: outputFileName })
+    this.pdfReader = this.pdfWriter.getModifiedFileParser()
 
-    try {
-      new PDFFormWriter().fillForm(pdfWriter, data)
-    } catch (e) {
-      this.log.error(`Unable to write filled PDF file. ${e.message}`)
-      console.log(e)
-      return -1
+    let font = null
+
+    if (fontFileName) {
+      font = this.pdfWriter.getFontForFile(fontFileName)
     }
 
-    pdfWriter.end()
+    const catalogDict = this.pdfReader
+      .queryDictionaryObject(this.pdfReader.getTrailer(), 'Root').toPDFDictionary()
+
+    if (catalogDict.exists('AcroForm')) {
+      this.log.warning('PDF still has an AcroForm')
+    }
+
+    const numPages = this.pdfReader.getPagesCount()
+
+    for (let i = 0; i < numPages; i++) {
+      const page = this.pdfReader.parsePage(i)
+      const pageModifier = new hummus.PDFPageModifier(this.pdfWriter, 0)
+      const pageContext = pageModifier.startContext().getContext()
+      const fields = data.fields.filter(f => (f.page === i))
+
+      for (let field of fields) {
+        switch (field.type) {
+          case 'highlight':
+            pageContext
+              .q()
+              .rg(1, 1, 0.6)
+              .re(
+                field.rect[0], field.rect[1],
+                field.rect[2] - field.rect[0],
+                field.rect[3] - field.rect[1])
+              .f()
+              .Q()
+            break
+          case 'plaintext':
+            if (!font) {
+              this.log.error('Font file must be specified for plaintext fields')
+              return -1
+            }
+            const rise = (field.rect[3] - field.rect[1]) / 4.0
+            pageContext
+              .q()
+              .BT()
+              .g(0)
+              .Tm(1, 0, 0, 1, field.rect[0], field.rect[1] + rise)
+              .Tf(font, 14)
+              .Tj(field.value)
+              .ET()
+              .Q()
+            break
+          case 'qrcode':
+            break
+          case 'checkbox':
+            const x = field.rect[0]
+            const y = field.rect[1]
+            const w = field.rect[2] - x
+            const h = field.rect[3] - y
+            pageContext
+              .q()
+              .G(0)
+              .w(2.5)
+              .J(2)
+              .re(x, y, w, h)
+              .S()
+
+            if (field.value) {
+              const dx = w / 5.0
+              const dy = h / 5.0
+
+              pageContext
+                .J(1)
+                .m(x + dx, y + dy)
+                .l(x + w - dx, y + h - dy)
+                .S()
+                .m(x + dx, y + h - dy)
+                .l(x + w - dy, y + dy)
+                .S()
+            }
+
+            pageContext.Q()
+            break
+          case 'signhere':
+            break
+          default:
+            this.log.warning(`Unknown field type ${field.type}`)
+            break
+        }
+      }
+
+      pageModifier.endContext().writePage()
+    }
+
+    this.pdfWriter.end()
   }
 
   async addWatermark() {
@@ -366,7 +478,7 @@ Global Options:
       return -1
     }
 
-    if (!await fs.statAsync(fileName)) {
+    if (!fs.existsSync(fileName)) {
       this.log.error(`File '${fileName}' does not exist`)
       return -1
     }
@@ -378,7 +490,7 @@ Global Options:
       return -1
     }
 
-    if (!await fs.statAsync(watermarkFileName)) {
+    if (!fs.existsSync(watermarkFileName)) {
       this.log.error(`File '${watermarkFileName}' does not exist`)
       return -1
     }

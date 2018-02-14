@@ -8,6 +8,7 @@ import autoBind from 'auto-bind2'
 import hummus from 'hummus'
 import util from 'util'
 import JSON5 from 'json5'
+import QRCode from 'qrcode'
 
 fs.readFileAsync = util.promisify(fs.readFile)
 
@@ -431,6 +432,20 @@ Global Options:
               .Q()
             break
           case 'qrcode':
+            const pngFileName = temp.path('.png')
+
+            await QRCode.toFile(pngFileName, field.value)
+
+            pageModifier.endContext()
+            let imageXObject = this.pdfWriter.createFormXObjectFromPNG(pngFileName)
+            pageContext = pageModifier.startContext().getContext()
+
+            pageContext.q()
+               .cm(1, 0, 0, 1, x, y)
+               .doXObject(imageXObject)
+               .Q()
+
+            fs.unlinkSync(pngFileName)
             break
           case 'checkbox':
             pageContext
@@ -468,10 +483,10 @@ Global Options:
             pageModifier.endContext()
 
             let gsID = this.createOpacityExtGState(0.5)
-            let xobjectForm = this.pdfWriter.createFormXObject(0, 0, w, h)
-            let gsName = xobjectForm.getResourcesDictionary().addExtGStateMapping(gsID)
+            let formXObject = this.pdfWriter.createFormXObject(0, 0, w, h)
+            let gsName = formXObject.getResourcesDictionary().addExtGStateMapping(gsID)
 
-            xobjectForm.getContentContext()
+            formXObject.getContentContext()
               .q()
               .gs(gsName)
               .w(1.0)
@@ -491,7 +506,7 @@ Global Options:
               .Tj(`Sign Here ${field.value}`)
               .ET()
               .Q()
-            this.pdfWriter.endFormXObject(xobjectForm)
+            this.pdfWriter.endFormXObject(formXObject)
 
             pageContext = pageModifier.startContext().getContext()
 
@@ -501,7 +516,7 @@ Global Options:
               .cm(Math.cos(q), Math.sin(q), -Math.sin(q), Math.cos(q), 0, 0)
               .cm(1, 0, 0, 1, 0, -halfH)
               // NOTE: The coordinate space of the XObjects is the same as the page!
-              .doXObject(xobjectForm)
+              .doXObject(formXObject)
               .Q()
             break
           default:

@@ -9,8 +9,10 @@ import hummus from 'hummus'
 import util from 'util'
 import JSON5 from 'json5'
 import QRCode from 'qrcode'
+import md5 from 'md5'
 
 fs.readFileAsync = util.promisify(fs.readFile)
+fs.writeFileAsync = util.promisify(fs.writeFile)
 
 function toText(item) {
   if(item.getType() === hummus.ePDFObjectLiteralString) {
@@ -33,12 +35,13 @@ export class PDFTool {
   async run(argv) {
     const options = {
       string: ['output-file', 'watermark-file', 'data-file', 'font-file' ],
-      boolean: [ 'help', 'version' ],
+      boolean: [ 'help', 'version', 'checkbox-borders' ],
       alias: {
         'o': 'output-file',
         'w': 'watermark-file',
         'd': 'data-file',
-        'f': 'font-file'
+        'f': 'font-file',
+        'c': 'checkbox-borders'
       }
     }
 
@@ -70,35 +73,39 @@ Notes:
 `)
           return 0
         }
-        return await this.concatPDFs()
+        return await this.concat()
       case 'fields':
         if (this.args.help) {
           this.log.info(`
 Usage: ${this.toolName} fields <pdf>
 
 Options:
-  --output-file, -o  Output JSON file
+--data-file, -d         Output JSON file
+--output-file, -o       Optional output PDF stripped of AcroForm and annotations.
+                        Adds 'md5' field to the output JSON.
 
 Notes:
-Outputs a JSON file containing information for all the AcroForm fields in the document
+Outputs a JSON file containing information for all the AcroForm fields in the document.
+If an output file is specified a stripped PDF will be generated (see 'strip' command)
+and an MD5 hash for the file will be included in the data file.
 `)
           return 0
         }
-        return await this.dumpAcroFormFields()
+        return await this.fields()
       case 'strip':
         if (this.args.help) {
           this.log.info(`
 Usage: ${this.toolName} strip <pdf> [options]
 
 Options:
-  --output-file, -o  Output file
+  --output-file, -o    Output PDF file
 
 Notes:
-Strips any AcroForm from the document and compresses the resulting document.
+Strips any AcroForm and page annotations from the document.
 `)
           return 0
         }
-        return await this.stripAcroFormAndAnnotations()
+        return await this.strip()
       case 'watermark':
         if (this.args.help) {
           this.log.info(`
@@ -106,14 +113,14 @@ Usage: ${this.toolName} watermark <pdf> [options]
 
 Options:
   --watermark-file , -w   Watermarked PDF document
-  --output-file, -o       Output file
+  --output-file, -o       Output PDF file
 
 Notes:
-Adds a watermark imahe underneath the existing content of each page of the given PDF.
+Adds a watermark images to the existing content of each page of the given PDF.
 `)
           return 0
         }
-        return await this.addWatermark()
+        return await this.watermark()
       case 'fill':
       if (this.args.help) {
         this.log.info(`
@@ -121,16 +128,16 @@ Usage: ${this.toolName} watermark <pdf> [options]
 
 Options:
 --watermark , -w   Watermark PDF document
---output-file, -o  Output file
---data-file, -d    JSON/JSON5 data file
---font-file, -f    Font file name to use for text fields
+--output-file, -o  Output PDF file
+--data-file, -d    Input JSON/JSON5 data file
+--font-file, -f    Input font file name to use for text fields
 
 Notes:
 Inserts 'form' data into the pages of the PDF.
 `)
           return 0
         }
-        return await this.fillPDFFields()
+        return await this.fill()
       case 'help':
         this.log.info(`
 Usage: ${this.toolName} <cmd> [options]
@@ -138,10 +145,14 @@ Usage: ${this.toolName} <cmd> [options]
 Commands:
 help              Shows this help
 concat            Concatenate two or more PDFs
-fields            Extract the field data from a PDF
+fields            Extract the field data from a PDF and optionally
+                  create a PDF stripped of its AcroForm and annotations.
+                  Generates an MD5 hash for the stripped PDF.
 strip             Strip an AcroForm from a PDF
-watermark         Add a watermark to every page of a PDF
-fill              Fill-in fields defined in a JSON5 file with data
+watermark         Add a watermark to every page of a PDF. Strips
+                  AcroForms and annotations in the resulting file.
+fill              Fill-in "fields" defined in a JSON5 file with data,
+                  checking against existing MD5 has for changes.
 
 Global Options:
   --help          Shows this help.
@@ -156,7 +167,7 @@ Global Options:
     return 0
   }
 
-  async concatPDFs() {
+  async concat() {
     const fileNames = this.args._
 
     if (fileNames.length < 2) {
@@ -187,7 +198,7 @@ Global Options:
     pdfWriter.end()
   }
 
-  async dumpAcroFormFields() {
+  async fields() {
     const fileName = this.args._[0]
 
     if (!fileName) {
@@ -200,12 +211,14 @@ Global Options:
       return -1
     }
 
-    const outputFileName = this.args['output-file']
+    const dataFileName = this.args['data-file']
 
-    if (!outputFileName) {
-      this.log.error(`No output file specified`)
+    if (!dataFileName) {
+      this.log.error(`No output data file specified`)
       return -1
     }
+
+    const outputFileName = this.args['output-file']
 
     this.pdfReader = hummus.createReader(fileName)
 
@@ -232,14 +245,17 @@ Global Options:
       this.pageMap[this.pdfReader.getPageObjectID(i)] = i
     }
 
-    const writeable = fs.createWriteStream(outputFileName)
+    let fieldData = {}
 
-    if (fieldsArray) {
-      const fields = this.parseFieldsArray(fieldsArray, {}, '')
-      writeable.write(JSON.stringify({ fields }, undefined, '  '))
+    fieldData.fields = this.parseFieldsArray(fieldsArray, {}, '')
+
+    if (outputFileName) {
+      await this.stripAcroFormAndAnnotations(fileName, outputFileName)
+      fieldData.md5 = md5(await fs.readFileAsync(outputFileName))
     }
 
-    writeable.end()
+    await fs.writeFileAsync(dataFileName, JSON.stringify(fieldData, undefined, '  '))
+
     return 0
   }
 
@@ -257,9 +273,7 @@ Global Options:
     return newDict
   }
 
-  async stripAcroFormAndAnnotations() {
-    // TODO: A better way to do this would be to just copy all the pages one-by-one to the new file. See addWatermark()
-
+  async strip() {
     const fileName = this.args._[0]
 
     if (!fileName) {
@@ -279,58 +293,35 @@ Global Options:
       return -1
     }
 
-    this.pdfWriter = hummus.createWriterToModify(fileName, { modifiedFilePath: outputFileName })
-    this.pdfReader = this.pdfWriter.getModifiedFileParser()
+    await this.stripAcroFormAndAnnotations(fileName, outputFileName)
 
-    const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), 'Root').toPDFDictionary()
-
-    if (catalogDict.exists('AcroForm')) {
-      // Do some setup
-      const catalogObjectID = this.pdfReader.getTrailer().queryObject('Root').toPDFIndirectObjectReference().getObjectID()
-
-      this.copyingContext = this.pdfWriter.createPDFCopyingContextForModifiedFile()
-      this.objectsContext = this.pdfWriter.getObjectsContext()
-
-      // Write a new Root object without the AcroForm field
-      this.objectsContext.startModifiedIndirectObject(catalogObjectID);
-      let modifiedDict = this.startModifiedDictionaryExcluding(catalogDict, ['AcroForm'])
-
-      this.objectsContext
-        .endDictionary(modifiedDict) // The new catalog dictionary
-        .endIndirectObject() // The new indirect object for the catalog ID
-
-      // Delete the root AcroForm object
-      // TODO: Recursively delete all children of the root form
-      const acroFormEntry = catalogDict.queryObject('AcroForm')
-
-      if (acroFormEntry.getType() === hummus.ePDFObjectIndirectObjectReference) {
-        const acroformObjectID = acroFormEntry.toPDFIndirectObjectReference().getObjectID()
-
-        this.objectsContext.deleteObject(acroformObjectID)
-      }
-
-      // Remove all page annotations
-      const numPages = this.pdfReader.getPagesCount()
-
-      for (let i = 0; i < numPages; i++) {
-        const pageID = this.pdfReader.getPageObjectID(i)
-        const pageDict = this.pdfReader.parsePageDictionary(i)
-
-        this.objectsContext.startModifiedIndirectObject(pageID)
-        let modifiedPageDict = this.startModifiedDictionaryExcluding(pageDict, ['Annots'])
-        this.objectsContext
-          .endDictionary(modifiedPageDict)
-          .endIndirectObject()
-        }
-
-        // TODO: Recursively delete all annotation objects
-    }
-
-    this.pdfWriter.end()
     return 0
   }
 
-  async fillPDFFields() {
+  async stripAcroFormAndAnnotations(fileName, outputFileName) {
+    // This strips the AcroForm and page annotations as a side-effect
+    // merging them into a new page.
+    const pdfWriter = hummus.createWriter(outputFileName)
+    const pdfReader = hummus.createReader(fileName)
+    const copyingContext = pdfWriter.createPDFCopyingContext(pdfReader)
+
+    // Next, iterate through the pages from the source document
+    const numPages = pdfReader.getPagesCount()
+
+    for (let i = 0; i < numPages; i++) {
+      const page = pdfReader.parsePage(i)
+      const pageMediaBox = page.getMediaBox()
+      const newPage = pdfWriter.createPage(...pageMediaBox)
+
+      // Merge the page; this will also remove annotations.
+      copyingContext.mergePDFPageToPage(newPage, i)
+      pdfWriter.writePage(newPage)
+    }
+
+    pdfWriter.end()
+  }
+
+  async fill() {
     const fileName = this.args._[0]
 
     if (!fileName) {
@@ -363,6 +354,7 @@ Global Options:
     }
 
     const fontFileName = this.args['font-file']
+    const checkboxBorders = !!this.args['checkbox-borders']
 
     let data = null
 
@@ -370,6 +362,11 @@ Global Options:
       data = await JSON5.parse(await fs.readFileAsync(jsonFileName, { encoding: 'utf8' }))
     } catch (e) {
       this.log.error(`Unable to read data file '${jsonFileName}'. ${e.message}`)
+      return -1
+    }
+
+    if (data.md5 && md5(await fs.readFileAsync(fileName)) !== data.md5) {
+      this.log.error(`MD5 for ${fileName} does not match the one in the data file`)
       return -1
     }
 
@@ -452,11 +449,15 @@ Global Options:
               .q()
               .G(0)
               .w(2.5)
-              .J(2)
-              .re(x, y, w, h)
-              .S()
 
-            if (field.value) {
+            if (checkboxBorders) {
+              pageContext
+                .J(2)
+                .re(x, y, w, h)
+                .S()
+            }
+
+            if (!!field.value) {
               const dx = w / 5.0
               const dy = h / 5.0
 
@@ -552,7 +553,7 @@ Global Options:
     return id
   }
 
-  async addWatermark() {
+  async watermark() {
     const fileName = this.args._[0]
 
     if (!fileName) {

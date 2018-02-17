@@ -124,13 +124,13 @@ Adds a watermark images to the existing content of each page of the given PDF.
       case 'fill':
       if (this.args.help) {
         this.log.info(`
-Usage: ${this.toolName} watermark <pdf> [options]
+Usage: ${this.toolName} fill <pdf> [options]
 
 Options:
---watermark , -w   Watermark PDF document
---output-file, -o  Output PDF file
---data-file, -d    Input JSON/JSON5 data file
---font-file, -f    Input font file name to use for text fields
+--output-file, -o       Output PDF file
+--data-file, -d         Input JSON/JSON5 data file
+--font-file, -f         Input font file name to use for text fields
+--checkbox-borders, -c  Put borders around checkboxes
 
 Notes:
 Inserts 'form' data into the pages of the PDF.

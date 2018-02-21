@@ -3,7 +3,7 @@ import { fullVersion } from './version'
 import path from 'path'
 import fs from 'fs'
 import process from 'process'
-import temp from 'temp'
+import tmp from 'tmp'
 import autoBind from 'auto-bind2'
 import hummus from 'hummus'
 import util from 'util'
@@ -429,7 +429,7 @@ Global Options:
               .Q()
             break
           case 'qrcode':
-            const pngFileName = temp.path('.png')
+            const pngFileName = tmp.tmpNameSync({ postfix: '.png'})
 
             await QRCode.toFile(pngFileName, field.value)
 

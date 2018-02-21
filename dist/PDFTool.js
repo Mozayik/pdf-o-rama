@@ -25,9 +25,9 @@ var _process = require('process');
 
 var _process2 = _interopRequireDefault(_process);
 
-var _temp = require('temp');
+var _tmp = require('tmp');
 
-var _temp2 = _interopRequireDefault(_temp);
+var _tmp2 = _interopRequireDefault(_tmp);
 
 var _autoBind = require('auto-bind2');
 
@@ -454,7 +454,7 @@ Global Options:
             pageContext.q().BT().g(0).Tm(1, 0, 0, 1, x, y + rise).Tf(font, 14).Tj(field.value).ET().Q();
             break;
           case 'qrcode':
-            const pngFileName = _temp2.default.path('.png');
+            const pngFileName = _tmp2.default.tmpNameSync({ postfix: '.png' });
 
             await _qrcode2.default.toFile(pngFileName, field.value);
 

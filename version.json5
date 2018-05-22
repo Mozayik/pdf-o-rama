@@ -8,11 +8,12 @@
   buildFormat: "full",
   tags: {
     major: 1,
-    minor: 1,
-    patch: 1,
-    build: 20180221,
+    minor: 2,
+    patch: 0,
+    build: 20180522,
     revision: 0,
-    tz: "America/Los_Angeles"
+    tz: "America/Los_Angeles",
+    sequence: 1
   },
   fileTypes: [
     {

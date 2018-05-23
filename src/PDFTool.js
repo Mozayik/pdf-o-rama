@@ -1,53 +1,52 @@
-import parseArgs from 'minimist'
-import { fullVersion } from './version'
-import path from 'path'
-import fs from 'fs'
-import process from 'process'
-import tmp from 'tmp'
-import autoBind from 'auto-bind2'
-import hummus from 'hummus'
-import util from 'util'
-import JSON5 from 'json5'
-import QRCode from 'qrcode'
-import md5 from 'md5'
+import parseArgs from "minimist"
+import { fullVersion } from "./version"
+import path from "path"
+import fs from "fs"
+import process from "process"
+import tmp from "tmp-promise"
+import hummus from "hummus"
+import util from "util"
+import JSON5 from "json5"
+import QRCode from "qrcode"
+import md5 from "md5"
+import autobind from "autobind-decorator"
 
 fs.readFileAsync = util.promisify(fs.readFile)
 fs.writeFileAsync = util.promisify(fs.writeFile)
 
 function toText(item) {
-  if(item.getType() === hummus.ePDFObjectLiteralString) {
+  if (item.getType() === hummus.ePDFObjectLiteralString) {
     return item.toPDFLiteralString().toText()
-  }
-  else if(item.getType() === hummus.ePDFObjectHexString) {
+  } else if (item.getType() === hummus.ePDFObjectHexString) {
     return item.toPDFHexString().toText()
   } else {
     return item.value
   }
 }
 
+@autobind
 export class PDFTool {
   constructor(toolName, log) {
-    autoBind(this)
     this.toolName = toolName
     this.log = log
   }
 
   async run(argv) {
     const options = {
-      string: ['output-file', 'watermark-file', 'data-file', 'font-file' ],
-      boolean: [ 'help', 'version', 'checkbox-borders' ],
+      string: ["output-file", "watermark-file", "data-file", "font-file"],
+      boolean: ["help", "version", "checkbox-borders"],
       alias: {
-        'o': 'output-file',
-        'w': 'watermark-file',
-        'd': 'data-file',
-        'f': 'font-file',
-        'c': 'checkbox-borders'
-      }
+        o: "output-file",
+        w: "watermark-file",
+        d: "data-file",
+        f: "font-file",
+        c: "checkbox-borders",
+      },
     }
 
     this.args = parseArgs(argv, options)
 
-    let command = 'help'
+    let command = "help"
 
     if (this.args._.length > 0) {
       command = this.args._[0].toLowerCase()
@@ -60,7 +59,7 @@ export class PDFTool {
     }
 
     switch (command) {
-      case 'concat':
+      case "concat":
         if (this.args.help) {
           this.log.info(`
 Usage: ${this.toolName} concat <pdf1> <pdf2> [<pdf3> ...] [options]
@@ -74,7 +73,7 @@ Notes:
           return 0
         }
         return await this.concat()
-      case 'fields':
+      case "fields":
         if (this.args.help) {
           this.log.info(`
 Usage: ${this.toolName} fields <pdf>
@@ -92,7 +91,7 @@ and an MD5 hash for the file will be included in the data file.
           return 0
         }
         return await this.fields()
-      case 'strip':
+      case "strip":
         if (this.args.help) {
           this.log.info(`
 Usage: ${this.toolName} strip <pdf> [options]
@@ -106,7 +105,7 @@ Strips any AcroForm and page annotations from the document.
           return 0
         }
         return await this.strip()
-      case 'watermark':
+      case "watermark":
         if (this.args.help) {
           this.log.info(`
 Usage: ${this.toolName} watermark <pdf> [options]
@@ -121,9 +120,9 @@ Adds a watermark images to the existing content of each page of the given PDF.
           return 0
         }
         return await this.watermark()
-      case 'fill':
-      if (this.args.help) {
-        this.log.info(`
+      case "fill":
+        if (this.args.help) {
+          this.log.info(`
 Usage: ${this.toolName} fill <pdf> [options]
 
 Options:
@@ -138,7 +137,7 @@ Inserts 'form' data into the pages of the PDF.
           return 0
         }
         return await this.fill()
-      case 'help':
+      case "help":
         this.log.info(`
 Usage: ${this.toolName} <cmd> [options]
 
@@ -160,7 +159,9 @@ Global Options:
 `)
         return 0
       default:
-        this.log.error(`Unknown command ${command}.  Use --help to see available commands`)
+        this.log.error(
+          `Unknown command ${command}.  Use --help to see available commands`
+        )
         return -1
     }
 
@@ -171,7 +172,7 @@ Global Options:
     const fileNames = this.args._
 
     if (fileNames.length < 2) {
-      this.log.error('Must specify at least two PDF files to concatenate')
+      this.log.error("Must specify at least two PDF files to concatenate")
       return -1
     }
 
@@ -182,10 +183,10 @@ Global Options:
       }
     }
 
-    const outputFile = this.args['output-file']
+    const outputFile = this.args["output-file"]
 
     if (!outputFile) {
-      this.log.error('No output file specified')
+      this.log.error("No output file specified")
       return -1
     }
 
@@ -202,7 +203,7 @@ Global Options:
     const fileName = this.args._[0]
 
     if (!fileName) {
-      this.log.error('Must specify a PDF from which to extract information')
+      this.log.error("Must specify a PDF from which to extract information")
       return -1
     }
 
@@ -211,31 +212,35 @@ Global Options:
       return -1
     }
 
-    const dataFileName = this.args['data-file']
+    const dataFileName = this.args["data-file"]
 
     if (!dataFileName) {
       this.log.error(`No output data file specified`)
       return -1
     }
 
-    const outputFileName = this.args['output-file']
+    const outputFileName = this.args["output-file"]
 
     this.pdfReader = hummus.createReader(fileName)
 
     const catalogDict = this.pdfReader
-      .queryDictionaryObject(this.pdfReader.getTrailer(), 'Root').toPDFDictionary()
+      .queryDictionaryObject(this.pdfReader.getTrailer(), "Root")
+      .toPDFDictionary()
 
-    if (!catalogDict.exists('AcroForm')) {
-      this.log.error('PDF does not have an AcroForm')
+    if (!catalogDict.exists("AcroForm")) {
+      this.log.error("PDF does not have an AcroForm")
       return -1
     }
 
     this.acroformDict = this.pdfReader
-      .queryDictionaryObject(catalogDict, 'AcroForm').toPDFDictionary()
+      .queryDictionaryObject(catalogDict, "AcroForm")
+      .toPDFDictionary()
 
-    let fieldsArray = this.acroformDict.exists('Fields') ?
-      this.pdfReader.queryDictionaryObject(this.acroformDict, 'Fields').toPDFArray() :
-      null
+    let fieldsArray = this.acroformDict.exists("Fields")
+      ? this.pdfReader
+          .queryDictionaryObject(this.acroformDict, "Fields")
+          .toPDFArray()
+      : null
 
     // Page map is used to get page number from page object ID
     const numPages = this.pdfReader.getPagesCount()
@@ -247,14 +252,17 @@ Global Options:
 
     let fieldData = {}
 
-    fieldData.fields = this.parseFieldsArray(fieldsArray, {}, '')
+    fieldData.fields = this.parseFieldsArray(fieldsArray, {}, "")
 
     if (outputFileName) {
       await this.stripAcroFormAndAnnotations(fileName, outputFileName)
       fieldData.md5 = md5(await fs.readFileAsync(outputFileName))
     }
 
-    await fs.writeFileAsync(dataFileName, JSON.stringify(fieldData, undefined, '  '))
+    await fs.writeFileAsync(
+      dataFileName,
+      JSON.stringify(fieldData, undefined, "  ")
+    )
 
     return 0
   }
@@ -277,7 +285,7 @@ Global Options:
     const fileName = this.args._[0]
 
     if (!fileName) {
-      this.log.error('Must specify a PDF from which to remove the AcroForm')
+      this.log.error("Must specify a PDF from which to remove the AcroForm")
       return -1
     }
 
@@ -286,7 +294,7 @@ Global Options:
       return -1
     }
 
-    const outputFileName = this.args['output-file']
+    const outputFileName = this.args["output-file"]
 
     if (!outputFileName) {
       this.log.error(`No output file specified`)
@@ -325,7 +333,7 @@ Global Options:
     const fileName = this.args._[0]
 
     if (!fileName) {
-      this.log.error('Must specify an input PDF file')
+      this.log.error("Must specify an input PDF file")
       return -1
     }
 
@@ -334,17 +342,17 @@ Global Options:
       return -1
     }
 
-    const outputFileName = this.args['output-file']
+    const outputFileName = this.args["output-file"]
 
     if (!outputFileName) {
-      this.log.error('No output file specified')
+      this.log.error("No output file specified")
       return -1
     }
 
-    const jsonFileName = this.args['data-file']
+    const jsonFileName = this.args["data-file"]
 
     if (!jsonFileName) {
-      this.log.error('Must specify a data file')
+      this.log.error("Must specify a data file")
       return -1
     }
 
@@ -353,24 +361,30 @@ Global Options:
       return -1
     }
 
-    const fontFileName = this.args['font-file']
-    const checkboxBorders = !!this.args['checkbox-borders']
+    const fontFileName = this.args["font-file"]
+    const checkboxBorders = !!this.args["checkbox-borders"]
 
     let data = null
 
     try {
-      data = await JSON5.parse(await fs.readFileAsync(jsonFileName, { encoding: 'utf8' }))
+      data = await JSON5.parse(
+        await fs.readFileAsync(jsonFileName, { encoding: "utf8" })
+      )
     } catch (e) {
       this.log.error(`Unable to read data file '${jsonFileName}'. ${e.message}`)
       return -1
     }
 
     if (data.md5 && md5(await fs.readFileAsync(fileName)) !== data.md5) {
-      this.log.error(`MD5 for ${fileName} does not match the one in the data file`)
+      this.log.error(
+        `MD5 for ${fileName} does not match the one in the data file`
+      )
       return -1
     }
 
-    this.pdfWriter = hummus.createWriterToModify(fileName, { modifiedFilePath: outputFileName })
+    this.pdfWriter = hummus.createWriterToModify(fileName, {
+      modifiedFilePath: outputFileName,
+    })
     this.pdfReader = this.pdfWriter.getModifiedFileParser()
 
     let font = null
@@ -378,14 +392,15 @@ Global Options:
 
     if (fontFileName) {
       font = this.pdfWriter.getFontForFile(fontFileName)
-      fontDims = font.calculateTextDimensions('X',14)
+      fontDims = font.calculateTextDimensions("X", 14)
     }
 
     const catalogDict = this.pdfReader
-      .queryDictionaryObject(this.pdfReader.getTrailer(), 'Root').toPDFDictionary()
+      .queryDictionaryObject(this.pdfReader.getTrailer(), "Root")
+      .toPDFDictionary()
 
-    if (catalogDict.exists('AcroForm')) {
-      this.log.warning('PDF still has an AcroForm')
+    if (catalogDict.exists("AcroForm")) {
+      this.log.warning("PDF still has an AcroForm")
     }
 
     const numPages = this.pdfReader.getPagesCount()
@@ -394,7 +409,7 @@ Global Options:
       const page = this.pdfReader.parsePage(i)
       const pageModifier = new hummus.PDFPageModifier(this.pdfWriter, 0)
       let pageContext = pageModifier.startContext().getContext()
-      const fields = data.fields.filter(f => (f.page === i))
+      const fields = data.fields.filter((f) => f.page === i)
 
       for (let field of fields) {
         const x = field.rect[0]
@@ -405,7 +420,7 @@ Global Options:
         const halfH = h / 2
 
         switch (field.type) {
-          case 'highlight':
+          case "highlight":
             pageContext
               .q()
               .rg(1, 1, 0.6)
@@ -413,9 +428,9 @@ Global Options:
               .f()
               .Q()
             break
-          case 'plaintext':
+          case "plaintext":
             if (!font) {
-              this.log.error('Font file must be specified for plaintext fields')
+              this.log.error("Font file must be specified for plaintext fields")
               return -1
             }
             pageContext
@@ -428,23 +443,26 @@ Global Options:
               .ET()
               .Q()
             break
-          case 'qrcode':
-            const pngFileName = tmp.tmpNameSync({ postfix: '.png'})
+          case "qrcode":
+            const pngFileName = await tmp.tmpName({ postfix: ".png" })
 
             await QRCode.toFile(pngFileName, field.value)
 
             pageModifier.endContext()
-            let imageXObject = this.pdfWriter.createFormXObjectFromPNG(pngFileName)
+            let imageXObject = this.pdfWriter.createFormXObjectFromPNG(
+              pngFileName
+            )
             pageContext = pageModifier.startContext().getContext()
 
-            pageContext.q()
-               .cm(1, 0, 0, 1, x, y)
-               .doXObject(imageXObject)
-               .Q()
+            pageContext
+              .q()
+              .cm(1, 0, 0, 1, x, y)
+              .doXObject(imageXObject)
+              .Q()
 
             fs.unlinkSync(pngFileName)
             break
-          case 'checkbox':
+          case "checkbox":
             pageContext
               .q()
               .G(0)
@@ -473,9 +491,9 @@ Global Options:
 
             pageContext.Q()
             break
-          case 'signhere':
+          case "signhere":
             if (!font) {
-              this.log.error('Font file must be specified for signhere fields')
+              this.log.error("Font file must be specified for signhere fields")
               return -1
             }
 
@@ -485,9 +503,12 @@ Global Options:
 
             let gsID = this.createOpacityExtGState(0.5)
             let formXObject = this.pdfWriter.createFormXObject(0, 0, w, h)
-            let gsName = formXObject.getResourcesDictionary().addExtGStateMapping(gsID)
+            let gsName = formXObject
+              .getResourcesDictionary()
+              .addExtGStateMapping(gsID)
 
-            formXObject.getContentContext()
+            formXObject
+              .getContentContext()
               .q()
               .gs(gsName)
               .w(1.0)
@@ -538,13 +559,11 @@ Global Options:
     const dict = context.startDictionary()
 
     dict
-      .writeKey('type')
-      .writeNameValue('ExtGState')
-      .writeKey('ca')
-    context
-      .writeNumber(opacity)
-      .endLine()
-    dict.writeKey('CA')
+      .writeKey("type")
+      .writeNameValue("ExtGState")
+      .writeKey("ca")
+    context.writeNumber(opacity).endLine()
+    dict.writeKey("CA")
     context
       .writeNumber(opacity)
       .endLine()
@@ -557,7 +576,7 @@ Global Options:
     const fileName = this.args._[0]
 
     if (!fileName) {
-      this.log.error('Must specify a PDF from which to remove the AcroForm')
+      this.log.error("Must specify a PDF from which to remove the AcroForm")
       return -1
     }
 
@@ -566,10 +585,10 @@ Global Options:
       return -1
     }
 
-    const watermarkFileName = this.args['watermark-file']
+    const watermarkFileName = this.args["watermark-file"]
 
     if (!watermarkFileName) {
-      this.log.error('No watermark file specified')
+      this.log.error("No watermark file specified")
       return -1
     }
 
@@ -578,22 +597,26 @@ Global Options:
       return -1
     }
 
-    const outputFileName = this.args['output-file']
+    const outputFileName = this.args["output-file"]
 
     if (!outputFileName) {
-      this.log.error('No output file specified')
+      this.log.error("No output file specified")
       return -1
     }
 
     this.pdfWriter = hummus.createWriter(outputFileName)
     this.pdfReader = hummus.createReader(fileName)
-    const copyingContext = this.pdfWriter.createPDFCopyingContext(this.pdfReader)
+    const copyingContext = this.pdfWriter.createPDFCopyingContext(
+      this.pdfReader
+    )
 
     // First, read in the watermark PDF and create a
     const watermarkInfo = this.getPDFPageInfo(watermarkFileName, 0)
 
     const formIDs = this.pdfWriter.createFormXObjectsFromPDF(
-      watermarkFileName, hummus.ePDFPageBoxMediaBox)
+      watermarkFileName,
+      hummus.ePDFPageBoxMediaBox
+    )
 
     // Next, iterate through the pages from the source document
     const numPages = this.pdfReader.getPagesCount()
@@ -610,8 +633,17 @@ Global Options:
 
       pageContext
         .q()
-        .cm(1, 0, 0, 1, (pageMediaBox[2] - watermarkInfo.mediaBox[2]) / 2, (pageMediaBox[3] - watermarkInfo.mediaBox[3]) / 2)
-        .doXObject(newPage.getResourcesDictionary().addFormXObjectMapping(formIDs[0]))
+        .cm(
+          1,
+          0,
+          0,
+          1,
+          (pageMediaBox[2] - watermarkInfo.mediaBox[2]) / 2,
+          (pageMediaBox[3] - watermarkInfo.mediaBox[3]) / 2
+        )
+        .doXObject(
+          newPage.getResourcesDictionary().addFormXObjectMapping(formIDs[0])
+        )
         .Q()
 
       this.pdfWriter.writePage(newPage)
@@ -626,70 +658,80 @@ Global Options:
     const page = pdfReader.parsePage(pageNum)
 
     return {
-      mediaBox: page.getMediaBox()
+      mediaBox: page.getMediaBox(),
     }
   }
 
   parseKids(fieldDictionary, inheritedProperties, baseFieldName) {
     let localEnv = {}
 
-    if (fieldDictionary.exists('FT')) {
-      localEnv['FT'] = fieldDictionary.queryObject('FT').toString()
+    if (fieldDictionary.exists("FT")) {
+      localEnv["FT"] = fieldDictionary.queryObject("FT").toString()
     }
-    if (fieldDictionary.exists('Ff')) {
-      localEnv['Ff'] = fieldDictionary.queryObject('Ff').toNumber()
+    if (fieldDictionary.exists("Ff")) {
+      localEnv["Ff"] = fieldDictionary.queryObject("Ff").toNumber()
     }
-    if (fieldDictionary.exists('DA')) {
-      localEnv['DA'] = toText(fieldDictionary.queryObject('DA'))
+    if (fieldDictionary.exists("DA")) {
+      localEnv["DA"] = toText(fieldDictionary.queryObject("DA"))
     }
-    if (fieldDictionary.exists('Opt')) {
-      localEnv['Opt'] = fieldDictionary.queryObject('Opt').toPDFArray()
+    if (fieldDictionary.exists("Opt")) {
+      localEnv["Opt"] = fieldDictionary.queryObject("Opt").toPDFArray()
     }
 
     let result = this.parseFieldsArray(
-      this.pdfReader.queryDictionaryObject(fieldDictionary, 'Kids').toPDFArray(),
-      {...inheritedProperties, ...localEnv},
-      baseFieldName)
+      this.pdfReader
+        .queryDictionaryObject(fieldDictionary, "Kids")
+        .toPDFArray(),
+      { ...inheritedProperties, ...localEnv },
+      baseFieldName
+    )
 
     return result
   }
 
   parseOnOffValue(fieldDictionary) {
-    if (fieldDictionary.exists('V')) {
-      let value = fieldDictionary.queryObject('V').toString()
-      if (value === 'Off' || value === '') {
+    if (fieldDictionary.exists("V")) {
+      let value = fieldDictionary.queryObject("V").toString()
+      if (value === "Off" || value === "") {
         return false
       } else {
         return true
       }
-    }
-    else {
+    } else {
       return null
     }
   }
 
   parseRadioButtonValue(fieldDictionary) {
-    if (fieldDictionary.exists('V')) {
-      let value = fieldDictionary.queryObject('V').toString()
+    if (fieldDictionary.exists("V")) {
+      let value = fieldDictionary.queryObject("V").toString()
 
-      if (value === 'Off' || value === '') {
+      if (value === "Off" || value === "") {
         return null
       } else {
         // using true cause sometimes these are actually checkboxes, and there's no underlying kids
         let result = true
         // for radio button this would be an appearance name of a radio button that's turned on. we wanna look for it
-        if (fieldDictionary.exists('Kids')) {
-          let  kidsArray = this.pdfReader.queryDictionaryObject(fieldDictionary,'Kids').toPDFArray()
+        if (fieldDictionary.exists("Kids")) {
+          let kidsArray = this.pdfReader
+            .queryDictionaryObject(fieldDictionary, "Kids")
+            .toPDFArray()
 
-          for (let i=0;i<kidsArray.getLength();++i) {
-            let widgetDictionary = this.pdfReader.queryArrayObject(kidsArray,i).toPDFDictionary()
+          for (let i = 0; i < kidsArray.getLength(); ++i) {
+            let widgetDictionary = this.pdfReader
+              .queryArrayObject(kidsArray, i)
+              .toPDFDictionary()
             // use the dictionary Ap/N dictionary for looking up the appearance stream name
-            let apDictionary = this.pdfReader.queryDictionaryObject(widgetDictionary,'AP').toPDFDictionary()
-            let nAppearances = this.pdfReader.queryDictionaryObject(apDictionary,'N').toPDFDictionary()
+            let apDictionary = this.pdfReader
+              .queryDictionaryObject(widgetDictionary, "AP")
+              .toPDFDictionary()
+            let nAppearances = this.pdfReader
+              .queryDictionaryObject(apDictionary, "N")
+              .toPDFDictionary()
 
             if (nAppearances.exists(value)) {
               // Found!
-              result = i; // save the selected index as value
+              result = i // save the selected index as value
               break
             }
           }
@@ -708,16 +750,20 @@ Global Options:
       return null
     }
 
-    let valueField = this.pdfReader.queryDictionaryObject(fieldDictionary,fieldName)
+    let valueField = this.pdfReader.queryDictionaryObject(
+      fieldDictionary,
+      fieldName
+    )
 
     if (valueField.getType() == hummus.ePDFObjectLiteralString) {
       return toText(valueField)
     } else if (valueField.getType() == hummus.ePDFObjectStream) {
       let bytes = []
-      let readStream = pdfReader.startReadingFromStream(valueField.toPDFStream())
+      let readStream = pdfReader.startReadingFromStream(
+        valueField.toPDFStream()
+      )
 
-      while (readStream.notEnded())
-      {
+      while (readStream.notEnded()) {
         const readData = readStream.read(1)
         // do something with the data
         bytes.push(readData[0])
@@ -729,11 +775,16 @@ Global Options:
   }
 
   parseChoiceValue(fieldDictionary) {
-    if (fieldDictionary.exists('V')) {
-      let valueField = this.pdfReader.queryDictionaryObject(fieldDictionary,"V")
+    if (fieldDictionary.exists("V")) {
+      let valueField = this.pdfReader.queryDictionaryObject(
+        fieldDictionary,
+        "V"
+      )
 
-      if (valueField.getType() == hummus.ePDFObjectLiteralString ||
-        valueField.getType() == hummus.ePDFObjectHexString) {
+      if (
+        valueField.getType() == hummus.ePDFObjectLiteralString ||
+        valueField.getType() == hummus.ePDFObjectHexString
+      ) {
         // text string. read into value
         return toText(valueField)
       } else if (valueField.getType == hummus.ePDFObjectArray) {
@@ -748,102 +799,140 @@ Global Options:
   }
 
   parseFieldsValueData(result, fieldDictionary, flags, inheritedProperties) {
-    const localFieldType = fieldDictionary.exists('FT') ? fieldDictionary.queryObject('FT').toString() : undefined
-    const fieldType = localFieldType || inheritedProperties['FT']
+    const localFieldType = fieldDictionary.exists("FT")
+      ? fieldDictionary.queryObject("FT").toString()
+      : undefined
+    const fieldType = localFieldType || inheritedProperties["FT"]
 
     if (!fieldType) {
-      return null; // k. must be a widget
+      return null // k. must be a widget
     }
 
     switch (fieldType) {
-      case 'Btn': {
-        if ((flags>>16) & 1) {
+      case "Btn": {
+        if ((flags >> 16) & 1) {
           // push button
-          result['type'] = 'button'
+          result["type"] = "button"
           // no value
-        } else if ((flags>>15) & 1) {
+        } else if ((flags >> 15) & 1) {
           // radio button
-          result['type'] = 'radio'
-          result['value'] = this.parseRadioButtonValue(fieldDictionary)
+          result["type"] = "radio"
+          result["value"] = this.parseRadioButtonValue(fieldDictionary)
         } else {
           // checkbox
-          result['type'] = 'checkbox'
-          result['value'] = this.parseOnOffValue(fieldDictionary)
+          result["type"] = "checkbox"
+          result["value"] = this.parseOnOffValue(fieldDictionary)
         }
         break
       }
-      case 'Tx': {
+      case "Tx": {
         // result['isFileSelect'] = !!(flags>>20 & 1)
-        if ((flags>>25) & 1) {
-          result['type'] = 'richtext'
+        if ((flags >> 25) & 1) {
+          result["type"] = "richtext"
           // rich text, value in 'RV'
-          result['value'] = this.parseTextFieldValue(fieldDictionary,'RV')
-          result['plainValue'] = this.parseTextFieldValue(fieldDictionary,'V')
+          result["value"] = this.parseTextFieldValue(fieldDictionary, "RV")
+          result["plainValue"] = this.parseTextFieldValue(fieldDictionary, "V")
         } else {
-          result['type'] = 'plaintext'
-          result['value'] = this.parseTextFieldValue(fieldDictionary,'V')
+          result["type"] = "plaintext"
+          result["value"] = this.parseTextFieldValue(fieldDictionary, "V")
         }
 
         break
       }
-      case 'Ch': {
-        result['type'] = 'choice'
-        result['value'] = this.parseChoiceValue(fieldDictionary)
+      case "Ch": {
+        result["type"] = "choice"
+        result["value"] = this.parseChoiceValue(fieldDictionary)
         break
       }
-      case 'Sig': {
-        result['type'] = 'signature'
+      case "Sig": {
+        result["type"] = "signature"
         break
       }
     }
   }
 
   parseField(fieldDictionary, inheritedProperties, baseFieldName) {
-    let fieldNameT = fieldDictionary.exists('T') ? toText(fieldDictionary.queryObject('T')) : undefined
-    let fieldNameTU = fieldDictionary.exists('TU') ? toText(fieldDictionary.queryObject('TU')) : undefined
-    let fieldNameTM = fieldDictionary.exists('TM') ? toText(fieldDictionary.queryObject('TM')) : undefined
-    let fieldFlags = fieldDictionary.exists('Ff') ? fieldDictionary.queryObject('Ff').toNumber() : undefined
-    let fieldRect = fieldDictionary.exists('Rect') ? fieldDictionary.queryObject('Rect').toPDFArray().toJSArray() : undefined
-    let fieldP = fieldDictionary.exists('P') ? fieldDictionary.queryObject('P').toPDFIndirectObjectReference().getObjectID() : undefined
+    let fieldNameT = fieldDictionary.exists("T")
+      ? toText(fieldDictionary.queryObject("T"))
+      : undefined
+    let fieldNameTU = fieldDictionary.exists("TU")
+      ? toText(fieldDictionary.queryObject("TU"))
+      : undefined
+    let fieldNameTM = fieldDictionary.exists("TM")
+      ? toText(fieldDictionary.queryObject("TM"))
+      : undefined
+    let fieldFlags = fieldDictionary.exists("Ff")
+      ? fieldDictionary.queryObject("Ff").toNumber()
+      : undefined
+    let fieldRect = fieldDictionary.exists("Rect")
+      ? fieldDictionary
+          .queryObject("Rect")
+          .toPDFArray()
+          .toJSArray()
+      : undefined
+    let fieldP = fieldDictionary.exists("P")
+      ? fieldDictionary
+          .queryObject("P")
+          .toPDFIndirectObjectReference()
+          .getObjectID()
+      : undefined
 
-    fieldFlags = (fieldFlags === undefined ? inheritedProperties['Ff'] : fieldFlags)
+    fieldFlags =
+      fieldFlags === undefined ? inheritedProperties["Ff"] : fieldFlags
     fieldFlags = fieldFlags || 0
 
     if (fieldRect) {
-      fieldRect = fieldRect.map(r => r.value)
+      fieldRect = fieldRect.map((r) => r.value)
     }
 
     // Assume that if there's no T and no Kids, this is a widget annotation which is not a field
-    if (fieldNameT === undefined &&
-      !fieldDictionary.exists('Kids') &&
-      fieldDictionary.exists('Subtype') &&
-      fieldDictionary.queryObject('Subtype').toString() == 'Widget') {
+    if (
+      fieldNameT === undefined &&
+      !fieldDictionary.exists("Kids") &&
+      fieldDictionary.exists("Subtype") &&
+      fieldDictionary.queryObject("Subtype").toString() == "Widget"
+    ) {
       return null
     }
 
     let result = {
       name: fieldNameT,
-      fullName: fieldNameT === undefined ? undefined : (baseFieldName + fieldNameT),
+      fullName:
+        fieldNameT === undefined ? undefined : baseFieldName + fieldNameT,
       //alternateName: fieldNameTU,
       //mappingName: fieldNameTM,
       //isNoExport: !!((fieldFlags>>2) & 1),
       rect: fieldRect,
-      page: this.pageMap[fieldP]
+      page: this.pageMap[fieldP],
     }
 
-    if (fieldDictionary.exists('Kids')) {
-      let kids = this.parseKids(fieldDictionary, inheritedProperties, baseFieldName + fieldNameT + '.')
+    if (fieldDictionary.exists("Kids")) {
+      let kids = this.parseKids(
+        fieldDictionary,
+        inheritedProperties,
+        baseFieldName + fieldNameT + "."
+      )
 
       if (kids) {
         // that would be a non terminal node, otherwise all kids are annotations an null would be returned
-        result['kids'] = kids
+        result["kids"] = kids
       } else {
         // a terminal node, so kids array returned empty
-        this.parseFieldsValueData(result, fieldDictionary, fieldFlags, inheritedProperties)
+        this.parseFieldsValueData(
+          result,
+          fieldDictionary,
+          fieldFlags,
+          inheritedProperties
+        )
       }
     } else {
       // read fields value data
-      this.parseFieldsValueData(result, fieldDictionary, fieldFlags, inheritedProperties)
+      this.parseFieldsValueData(
+        result,
+        fieldDictionary,
+        fieldFlags,
+        inheritedProperties
+      )
     }
 
     return result
@@ -852,10 +941,12 @@ Global Options:
   parseFieldsArray(fieldsArray, inheritedProperties, baseFieldName) {
     let result = []
 
-    for (let i=0; i < fieldsArray.getLength(); ++i) {
+    for (let i = 0; i < fieldsArray.getLength(); ++i) {
       let fieldResult = this.parseField(
-        this.pdfReader.queryArrayObject(fieldsArray,i).toPDFDictionary(),
-        inheritedProperties, baseFieldName)
+        this.pdfReader.queryArrayObject(fieldsArray, i).toPDFDictionary(),
+        inheritedProperties,
+        baseFieldName
+      )
 
       if (fieldResult) {
         result.push(fieldResult)

@@ -5,6 +5,7 @@
   "bin": {
     "pdf-o-rama": "dist/pdf-o-rama.js"
   },
+  "main": "dist/PDFTool.js",
   "files": [
     "dist/**",
     "index.js"

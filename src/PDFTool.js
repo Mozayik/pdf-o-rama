@@ -256,7 +256,8 @@ Global Options:
 
     if (outputFileName) {
       await this.stripAcroFormAndAnnotations(fileName, outputFileName)
-      fieldData.md5 = md5(await fs.readFileAsync(outputFileName))
+      const buf = await fs.readFileAsync(outputFileName)
+      fieldData.md5 = md5(buf.buffer)
     }
 
     await fs.writeFileAsync(
@@ -375,11 +376,15 @@ Global Options:
       return -1
     }
 
-    if (data.md5 && md5(await fs.readFileAsync(fileName)) !== data.md5) {
-      this.log.error(
-        `MD5 for ${fileName} does not match the one in the data file`
-      )
-      return -1
+    if (data.md5) {
+      const buf = await fs.readFileAsync(fileName)
+
+      if (md5(buf.buffer) !== data.md5) {
+        this.log.error(
+          `MD5 for ${fileName} does not match the one in the data file`
+        )
+        return -1
+      }
     }
 
     this.pdfWriter = hummus.createWriterToModify(fileName, {

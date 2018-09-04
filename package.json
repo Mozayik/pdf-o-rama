@@ -20,7 +20,8 @@
     "testPathIgnorePatterns": [
       "node_modules/",
       "scratch/"
-    ]
+    ],
+    "testURL": "http://localhost"
   },
   "repository": {
     "type": "git",

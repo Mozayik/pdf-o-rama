@@ -291,7 +291,8 @@ Global Options:
 
     if (outputFileName) {
       await this.stripAcroFormAndAnnotations(fileName, outputFileName);
-      fieldData.md5 = (0, _md2.default)((await _fs2.default.readFileAsync(outputFileName)));
+      const buf = await _fs2.default.readFileAsync(outputFileName);
+      fieldData.md5 = (0, _md2.default)(buf.buffer);
     }
 
     await _fs2.default.writeFileAsync(dataFileName, JSON.stringify(fieldData, undefined, "  "));
@@ -405,9 +406,13 @@ Global Options:
       return -1;
     }
 
-    if (data.md5 && (0, _md2.default)((await _fs2.default.readFileAsync(fileName))) !== data.md5) {
-      this.log.error(`MD5 for ${fileName} does not match the one in the data file`);
-      return -1;
+    if (data.md5) {
+      const buf = await _fs2.default.readFileAsync(fileName);
+
+      if ((0, _md2.default)(buf.buffer) !== data.md5) {
+        this.log.error(`MD5 for ${fileName} does not match the one in the data file`);
+        return -1;
+      }
     }
 
     this.pdfWriter = _hummus2.default.createWriterToModify(fileName, {

@@ -24,12 +24,12 @@ Additionally, the tool can embed a specific font into the PDF for use when filli
 Install the tool with:
 
 ```
-npm install -g Jamoki/pdf-o-rama
+npm install -g KingstonSoftware/pdf-o-rama
 pdf-o-rama help
 ```
 
 or run it with `npx`:
 
 ```
-npx Jamoki/pdf-o-rama pdf-o-rama help
+npx KingstonSoftware/pdf-o-rama pdf-o-rama help
 ```

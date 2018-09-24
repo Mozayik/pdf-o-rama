@@ -252,6 +252,7 @@ Global Options:
 
     let fieldData = {}
 
+    fieldData.numPages = numPages
     fieldData.fields = this.parseFieldsArray(fieldsArray, {}, "")
 
     if (outputFileName) {

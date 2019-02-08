@@ -76,6 +76,6 @@ test("concat", async (done) => {
     fs: mockFS,
   })
 
-  await tool.concat({ fileNames: ["a.pdf", "b.pdf"], outputFile: "x.pdf" })
+  await tool.concat({ pdfFiles: ["a.pdf", "b.pdf"], outputFile: "x.pdf" })
   done()
 })

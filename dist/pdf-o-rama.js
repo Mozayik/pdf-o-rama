@@ -24,6 +24,10 @@ const tool = new _PDFTool.PDFTool(_path.default.basename(process.argv[1], ".js")
 tool.run(process.argv.slice(2)).then(exitCode => {
   process.exitCode = exitCode;
 }).catch(err => {
-  console.error(err);
+  log.error(err.message);
+
+  if (tool.debug) {
+    console.error(err);
+  }
 });
 //# sourceMappingURL=pdf-o-rama.js.map

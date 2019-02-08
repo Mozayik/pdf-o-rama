@@ -1,7 +1,7 @@
 {
   "name": "pdf-o-rama",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "A tool for better PDF form filling",
   "bin": {
     "pdf-o-rama": "dist/pdf-o-rama.js"

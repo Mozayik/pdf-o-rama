@@ -9,13 +9,11 @@ var _minimist = _interopRequireDefault(require("minimist"));
 
 var _version = require("./version");
 
-var _fs = _interopRequireDefault(require("fs"));
+var _fsExtra = _interopRequireDefault(require("fs-extra"));
 
 var _tmpPromise = _interopRequireDefault(require("tmp-promise"));
 
 var _hummus = _interopRequireDefault(require("hummus"));
-
-var _util = _interopRequireDefault(require("util"));
 
 var _json = _interopRequireDefault(require("json5"));
 
@@ -29,9 +27,6 @@ var _class;
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-_fs.default.readFileAsync = _util.default.promisify(_fs.default.readFile);
-_fs.default.writeFileAsync = _util.default.promisify(_fs.default.writeFile);
-
 function toText(item) {
   if (item.getType() === _hummus.default.ePDFObjectLiteralString) {
     return item.toPDFLiteralString().toText();
@@ -43,214 +38,56 @@ function toText(item) {
 }
 
 let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
-  constructor(toolName, log) {
+  constructor(toolName, log, container) {
+    container = container || {};
     this.toolName = toolName;
     this.log = log;
+    this.hummus = container.hummus || _hummus.default;
+    this.fs = container.fs || _fsExtra.default;
   }
 
-  async run(argv) {
-    const options = {
-      string: ["output-file", "watermark-file", "data-file", "font-file"],
-      boolean: ["help", "version", "checkbox-borders"],
-      alias: {
-        o: "output-file",
-        w: "watermark-file",
-        d: "data-file",
-        f: "font-file",
-        c: "checkbox-borders"
-      }
-    };
-    this.args = (0, _minimist.default)(argv, options);
-    let command = "help";
-
-    if (this.args._.length > 0) {
-      command = this.args._[0].toLowerCase();
-
-      this.args._.shift();
+  async concat(options) {
+    if (options.pdfFiles.length < 2) {
+      throw new Error("Must specify at least two PDF files to concatenate");
     }
 
-    if (this.args.version) {
-      this.log.info(`${_version.fullVersion}`);
-      return 0;
-    }
-
-    switch (command) {
-      case "concat":
-        if (this.args.help) {
-          this.log.info(`
-Usage: ${this.toolName} concat <pdf1> <pdf2> [<pdf3> ...] [options]
-
-Options:
-  --output-file, -o  Output PDF file
-
-Notes:
-  File will be concatenated in the order in which they are given.
-`);
-          return 0;
-        }
-
-        return await this.concat();
-
-      case "fields":
-        if (this.args.help) {
-          this.log.info(`
-Usage: ${this.toolName} fields <pdf>
-
-Options:
---data-file, -d         Output JSON file
---output-file, -o       Optional output PDF stripped of AcroForm and annotations.
-                        Adds 'md5' field to the output JSON.
-
-Notes:
-Outputs a JSON file containing information for all the AcroForm fields in the document.
-If an output file is specified a stripped PDF will be generated (see 'strip' command)
-and an MD5 hash for the file will be included in the data file.
-`);
-          return 0;
-        }
-
-        return await this.fields();
-
-      case "strip":
-        if (this.args.help) {
-          this.log.info(`
-Usage: ${this.toolName} strip <pdf> [options]
-
-Options:
-  --output-file, -o    Output PDF file
-
-Notes:
-Strips any AcroForm and page annotations from the document.
-`);
-          return 0;
-        }
-
-        return await this.strip();
-
-      case "watermark":
-        if (this.args.help) {
-          this.log.info(`
-Usage: ${this.toolName} watermark <pdf> [options]
-
-Options:
-  --watermark-file , -w   Watermarked PDF document
-  --output-file, -o       Output PDF file
-
-Notes:
-Adds a watermark images to the existing content of each page of the given PDF.
-`);
-          return 0;
-        }
-
-        return await this.watermark();
-
-      case "fill":
-        if (this.args.help) {
-          this.log.info(`
-Usage: ${this.toolName} fill <pdf> [options]
-
-Options:
---output-file, -o       Output PDF file
---data-file, -d         Input JSON/JSON5 data file
---font-file, -f         Input font file name to use for text fields
---checkbox-borders, -c  Put borders around checkboxes
-
-Notes:
-Inserts 'form' data into the pages of the PDF.
-`);
-          return 0;
-        }
-
-        return await this.fill();
-
-      case "help":
-        this.log.info(`
-Usage: ${this.toolName} <cmd> [options]
-
-Commands:
-help              Shows this help
-concat            Concatenate two or more PDFs
-fields            Extract the field data from a PDF and optionally
-                  create a PDF stripped of its AcroForm and annotations.
-                  Generates an MD5 hash for the stripped PDF.
-strip             Strip an AcroForm from a PDF
-watermark         Add a watermark to every page of a PDF. Strips
-                  AcroForms and annotations in the resulting file.
-fill              Fill-in "fields" defined in a JSON5 file with data,
-                  checking against existing MD5 has for changes.
-
-Global Options:
-  --help          Shows this help.
-  --version       Shows the tool version.
-`);
-        return 0;
-
-      default:
-        this.log.error(`Unknown command ${command}.  Use --help to see available commands`);
-        return -1;
-    }
-
-    return 0;
-  }
-
-  async concat() {
-    const fileNames = this.args._;
-
-    if (fileNames.length < 2) {
-      this.log.error("Must specify at least two PDF files to concatenate");
-      return -1;
-    }
-
-    for (let fileName of fileNames) {
-      if (!_fs.default.existsSync(fileName)) {
-        this.log.error(`File '${fileName}' does not exist`);
-        return -1;
+    for (let pdfFile of options.pdfFiles) {
+      if (!this.fs.existsSync(pdfFile)) {
+        throw new Error(`File '${pdfFile}' does not exist`);
       }
     }
 
-    const outputFile = this.args["output-file"];
-
-    if (!outputFile) {
-      this.log.error("No output file specified");
-      return -1;
+    if (!options.outputFile) {
+      throw new Error("No output file specified");
     }
 
-    const pdfWriter = _hummus.default.createWriter(outputFile);
+    const pdfWriter = this.hummus.createWriter(options.outputFile);
 
-    for (let fileName of fileNames) {
-      pdfWriter.appendPDFPagesFromPDF(fileName);
+    for (let pdfFile of options.pdfFiles) {
+      pdfWriter.appendPDFPagesFromPDF(pdfFile);
     }
 
     pdfWriter.end();
   }
 
-  async fields() {
-    const fileName = this.args._[0];
-
-    if (!fileName) {
-      this.log.error("Must specify a PDF from which to extract information");
-      return -1;
+  async fields(options) {
+    if (!options.pdfFile) {
+      throw new Error("Must specify a PDF from which to extract information");
     }
 
-    if (!_fs.default.existsSync(fileName)) {
-      this.log.error(`File '${fileName}' does not exist`);
-      return -1;
+    if (!this.fs.existsSync(options.pdfFile)) {
+      throw new Error(`File '${options.pdfFile}' does not exist`);
     }
 
-    const dataFileName = this.args["data-file"];
-
-    if (!dataFileName) {
-      this.log.error(`No output data file specified`);
-      return -1;
+    if (!options.dataFile) {
+      throw new Error(`No output data file specified`);
     }
 
-    const outputFileName = this.args["output-file"];
-    this.pdfReader = _hummus.default.createReader(fileName);
+    this.pdfReader = this.hummus.createReader(options.pdfFile);
     const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), "Root").toPDFDictionary();
 
     if (!catalogDict.exists("AcroForm")) {
-      this.log.error("PDF does not have an AcroForm");
-      return -1;
+      throw new Error("PDF does not have an AcroForm");
     }
 
     this.acroformDict = this.pdfReader.queryDictionaryObject(catalogDict, "AcroForm").toPDFDictionary();
@@ -267,14 +104,13 @@ Global Options:
     fieldData.numPages = numPages;
     fieldData.fields = this.parseFieldsArray(fieldsArray, {}, "");
 
-    if (outputFileName) {
-      await this.stripAcroFormAndAnnotations(fileName, outputFileName);
-      const buf = await _fs.default.readFileAsync(outputFileName);
+    if (options.outputFile) {
+      await this.stripAcroFormAndAnnotations(options.pdfFile, options.outputFile);
+      const buf = await this.fs.readFile(options.outputFile);
       fieldData.md5 = (0, _md.default)(buf.buffer);
     }
 
-    await _fs.default.writeFileAsync(dataFileName, JSON.stringify(fieldData, undefined, "  "));
-    return 0;
+    await this.fs.writeFile(options.dataFile, _json.default.stringify(fieldData, undefined, "  "));
   }
 
   startModifiedDictionaryExcluding(originalDict, excludedKeys) {
@@ -289,36 +125,28 @@ Global Options:
     return newDict;
   }
 
-  async strip() {
-    const fileName = this.args._[0];
-
-    if (!fileName) {
-      this.log.error("Must specify a PDF from which to remove the AcroForm");
-      return -1;
+  async strip(options) {
+    if (!options.pdfFile) {
+      throw new Error("Must specify a PDF from which to remove the AcroForm");
     }
 
-    if (!_fs.default.existsSync(fileName)) {
-      this.log.error(`File '${fileName}' does not exist`);
-      return -1;
+    if (!this.fs.existsSync(options.pdfFile)) {
+      throw new Error(`File '${options.pdfFile}' does not exist`);
     }
 
-    const outputFileName = this.args["output-file"];
-
-    if (!outputFileName) {
-      this.log.error(`No output file specified`);
-      return -1;
+    if (!options.outputFile) {
+      throw new Error(`No output file specified`);
     }
 
-    await this.stripAcroFormAndAnnotations(fileName, outputFileName);
-    return 0;
+    await this.stripAcroFormAndAnnotations(options.pdfFile, options.outputFile);
   }
 
-  async stripAcroFormAndAnnotations(fileName, outputFileName) {
+  async stripAcroFormAndAnnotations(pdfFile, outputFile) {
     // This strips the AcroForm and page annotations as a side-effect
     // merging them into a new page.
-    const pdfWriter = _hummus.default.createWriter(outputFileName);
+    const pdfWriter = _hummus.default.createWriter(outputFile);
 
-    const pdfReader = _hummus.default.createReader(fileName);
+    const pdfReader = _hummus.default.createReader(pdfFile);
 
     const copyingContext = pdfWriter.createPDFCopyingContext(pdfReader); // Next, iterate through the pages from the source document
 
@@ -336,69 +164,56 @@ Global Options:
     pdfWriter.end();
   }
 
-  async fill() {
-    const fileName = this.args._[0];
-
-    if (!fileName) {
-      this.log.error("Must specify an input PDF file");
-      return -1;
+  async fill(options) {
+    if (!options.pdfFile) {
+      throw new Error("Must specify an input PDF file");
     }
 
-    if (!_fs.default.existsSync(fileName)) {
-      this.log.error(`File '${fileName}' does not exist`);
-      return -1;
+    if (!this.fs.existsSync(options.pdfFile)) {
+      throw new Error(`File '${options.pdfFile}' does not exist`);
     }
 
-    const outputFileName = this.args["output-file"];
-
-    if (!outputFileName) {
-      this.log.error("No output file specified");
-      return -1;
+    if (!options.outputFile) {
+      throw new Error("No output file specified");
     }
 
-    const jsonFileName = this.args["data-file"];
-
-    if (!jsonFileName) {
-      this.log.error("Must specify a data file");
-      return -1;
+    if (!options.dataFile) {
+      throw new Error("Must specify a data file");
     }
 
-    if (!_fs.default.existsSync(jsonFileName)) {
-      this.log.error(`File '${jsonFileName}' does not exist`);
-      return -1;
+    if (!this.fs.existsSync(options.dataFile)) {
+      throw new Error(`File '${options.dataFile}' does not exist`);
     }
 
-    const fontFileName = this.args["font-file"];
-    const checkboxBorders = !!this.args["checkbox-borders"];
     let data = null;
 
     try {
-      data = await _json.default.parse((await _fs.default.readFileAsync(jsonFileName, {
+      data = await _json.default.parse((await this.fs.readFile(options.dataFile, {
         encoding: "utf8"
       })));
     } catch (e) {
-      this.log.error(`Unable to read data file '${jsonFileName}'. ${e.message}`);
+      this.log.error(`Unable to read data file '${options.dataFile}'. ${e.message}`);
       return -1;
     }
 
     if (data.md5) {
-      const buf = await _fs.default.readFileAsync(fileName);
+      const buf = await this.fs.readFile(options.pdfFile);
 
       if ((0, _md.default)(buf.buffer) !== data.md5) {
-        this.log.error(`MD5 for ${fileName} does not match the one in the data file`);
+        this.log.error(`MD5 for ${options.pdfFile} does not match the one in the data file`);
         return -1;
       }
     }
 
-    this.pdfWriter = _hummus.default.createWriterToModify(fileName, {
-      modifiedFilePath: outputFileName
+    this.pdfWriter = _hummus.default.createWriterToModify(options.pdfFile, {
+      modifiedFilePath: options.outputFile
     });
     this.pdfReader = this.pdfWriter.getModifiedFileParser();
     let font = null;
     let fontDims = null;
 
-    if (fontFileName) {
-      font = this.pdfWriter.getFontForFile(fontFileName);
+    if (options.fontFile) {
+      font = this.pdfWriter.getFontForFile(options.fontFile);
       fontDims = font.calculateTextDimensions("X", 14);
     }
 
@@ -448,14 +263,14 @@ Global Options:
             pageContext = pageModifier.startContext().getContext();
             pageContext.q().cm(1, 0, 0, 1, x, y).doXObject(imageXObject).Q();
 
-            _fs.default.unlinkSync(pngFileName);
+            _fsExtra.default.unlinkSync(pngFileName);
 
             break;
 
           case "checkbox":
             pageContext.q().G(0).w(2.5);
 
-            if (checkboxBorders) {
+            if (options.checkboxBorders) {
               pageContext.J(2).re(x, y, w, h).S();
             }
 
@@ -509,44 +324,38 @@ Global Options:
     return id;
   }
 
-  async watermark() {
-    const fileName = this.args._[0];
-
-    if (!fileName) {
+  async watermark(options) {
+    if (!options.pdfFile) {
       this.log.error("Must specify a PDF from which to remove the AcroForm");
       return -1;
     }
 
-    if (!_fs.default.existsSync(fileName)) {
-      this.log.error(`File '${fileName}' does not exist`);
+    if (!this.fs.existsSync(options.pdfFile)) {
+      this.log.error(`File '${options.pdfFile}' does not exist`);
       return -1;
     }
 
-    const watermarkFileName = this.args["watermark-file"];
-
-    if (!watermarkFileName) {
+    if (!options.watermarkFile) {
       this.log.error("No watermark file specified");
       return -1;
     }
 
-    if (!_fs.default.existsSync(watermarkFileName)) {
-      this.log.error(`File '${watermarkFileName}' does not exist`);
+    if (!this.fs.existsSync(options.watermarkFile)) {
+      this.log.error(`File '${options.watermarkFile}' does not exist`);
       return -1;
     }
 
-    const outputFileName = this.args["output-file"];
-
-    if (!outputFileName) {
+    if (!options.outputFile) {
       this.log.error("No output file specified");
       return -1;
     }
 
-    this.pdfWriter = _hummus.default.createWriter(outputFileName);
-    this.pdfReader = _hummus.default.createReader(fileName);
+    this.pdfWriter = _hummus.default.createWriter(options.outputFile);
+    this.pdfReader = _hummus.default.createReader(options.pdfFile);
     const copyingContext = this.pdfWriter.createPDFCopyingContext(this.pdfReader); // First, read in the watermark PDF and create a
 
-    const watermarkInfo = this.getPDFPageInfo(watermarkFileName, 0);
-    const formIDs = this.pdfWriter.createFormXObjectsFromPDF(watermarkFileName, _hummus.default.ePDFPageBoxMediaBox); // Next, iterate through the pages from the source document
+    const watermarkInfo = this.getPDFPageInfo(options.watermarkFile, 0);
+    const formIDs = this.pdfWriter.createFormXObjectsFromPDF(options.watermarkFile, _hummus.default.ePDFPageBoxMediaBox); // Next, iterate through the pages from the source document
 
     const numPages = this.pdfReader.getPagesCount();
 
@@ -565,8 +374,8 @@ Global Options:
     return 0;
   }
 
-  getPDFPageInfo(fileName, pageNum) {
-    const pdfReader = _hummus.default.createReader(fileName);
+  getPDFPageInfo(pdfFile, pageNum) {
+    const pdfReader = _hummus.default.createReader(pdfFile);
 
     const page = pdfReader.parsePage(pageNum);
     return {
@@ -697,7 +506,7 @@ Global Options:
     const fieldType = localFieldType || inheritedProperties["FT"];
 
     if (!fieldType) {
-      return null; // k. must be a widget
+      return null; // Must be a widget
     }
 
     switch (fieldType) {
@@ -771,10 +580,10 @@ Global Options:
 
     let result = {
       name: fieldNameT,
-      fullName: fieldNameT === undefined ? undefined : baseFieldName + fieldNameT,
-      //alternateName: fieldNameTU,
-      //mappingName: fieldNameTM,
-      //isNoExport: !!((fieldFlags>>2) & 1),
+      // NOTE: Other fields to consider...
+      // alternateName: fieldNameTU,
+      // mappingName: fieldNameTM,
+      // isNoExport: !!((fieldFlags>>2) & 1),
       rect: fieldRect,
       page: this.pageMap[fieldP]
     };
@@ -809,6 +618,172 @@ Global Options:
     }
 
     return result;
+  }
+
+  async run(argv) {
+    const options = {
+      string: ["output-file", "watermark-file", "data-file", "font-file"],
+      boolean: ["help", "version", "checkbox-borders", "debug"],
+      alias: {
+        o: "output-file",
+        w: "watermark-file",
+        d: "data-file",
+        f: "font-file",
+        c: "checkbox-borders"
+      }
+    };
+    const args = (0, _minimist.default)(argv, options);
+    this.debug = args.debug;
+    let command = "help";
+
+    if (args._.length > 0) {
+      command = args._[0].toLowerCase();
+
+      args._.shift();
+    }
+
+    if (args.version) {
+      this.log.info(`${_version.fullVersion}`);
+      return 0;
+    }
+
+    switch (command) {
+      case "concat":
+        if (args.help) {
+          this.log.info(`
+Usage: ${this.toolName} concat <pdf1> <pdf2> [<pdf3> ...] [options]
+
+Options:
+  --output-file, -o  Output PDF file
+
+Notes:
+  File will be concatenated in the order in which they are given.
+`);
+          return 0;
+        }
+
+        return await this.concat({
+          pdfFiles: args._,
+          outputFile: args["output-file"]
+        });
+
+      case "fields":
+        if (args.help) {
+          this.log.info(`
+Usage: ${this.toolName} fields <pdf>
+
+Options:
+--data-file, -d         Output JSON5 file
+--output-file, -o       Optional output PDF stripped of AcroForm and annotations.
+                        Adds 'md5' field to the output JSON5.
+
+Notes:
+Outputs a JSON5 file containing information for all the AcroForm fields in the document.
+If an output file is specified a stripped PDF will be generated (see 'strip' command)
+and an MD5 hash for the file will be included in the data file.
+`);
+          return 0;
+        }
+
+        await this.fields({
+          pdfFile: args._[0],
+          dataFile: args["data-file"],
+          outputFile: args["output-file"]
+        });
+
+      case "strip":
+        if (args.help) {
+          this.log.info(`
+Usage: ${this.toolName} strip <pdf> [options]
+
+Options:
+  --output-file, -o    Output PDF file
+
+Notes:
+Strips any AcroForm and page annotations from the document.
+`);
+          return 0;
+        }
+
+        return await this.strip({
+          pdfFile: args._[0],
+          outputFile: args["output-file"]
+        });
+
+      case "watermark":
+        if (args.help) {
+          this.log.info(`
+Usage: ${this.toolName} watermark <pdf> [options]
+
+Options:
+  --watermark-file , -w   Watermarked PDF document
+  --output-file, -o       Output PDF file
+
+Notes:
+Adds a watermark images to the existing content of each page of the given PDF.
+`);
+          return 0;
+        }
+
+        return await this.watermark({
+          pdfFile: args._[0],
+          watermarkFile: args["watermark-file"],
+          outputFile: args["output-file"]
+        });
+
+      case "fill":
+        if (args.help) {
+          this.log.info(`
+Usage: ${this.toolName} fill <pdf> [options]
+
+Options:
+--output-file, -o       Output PDF file
+--data-file, -d         Input JSON5 data file
+--font-file, -f         Input font file name to use for text fields
+--checkbox-borders, -c  Put borders around checkboxes
+
+Notes:
+Inserts 'form' data into the pages of the PDF.
+`);
+          return 0;
+        }
+
+        return await this.fill({
+          pdfFile: args._[0],
+          outputFile: args["output-file"],
+          dataFile: args["data-file"],
+          fontFile: args["font-file"],
+          checkboxBorders: !!args["checkbox-borders"]
+        });
+
+      case "help":
+        this.log.info(`
+Usage: ${this.toolName} <cmd> [options]
+
+Commands:
+help              Shows this help
+concat            Concatenate two or more PDFs
+fields            Extract the field data from a PDF and optionally
+                  create a PDF stripped of its AcroForm and annotations.
+                  Generates an MD5 hash for the stripped PDF.
+strip             Strip an AcroForm from a PDF
+watermark         Add a watermark to every page of a PDF. Strips
+                  AcroForms and annotations in the resulting file.
+fill              Fill-in "fields" defined in a JSON5 file with data,
+                  checking against existing MD5 has for changes.
+
+Global Options:
+  --help          Shows this help.
+  --version       Shows the tool version.
+`);
+        return 0;
+
+      default:
+        this.log.error(`Unknown command ${command}.  Use --help to see available commands`);
+        return -1;
+    }
+
+    return 0;
   }
 
 }) || _class;

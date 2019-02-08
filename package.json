@@ -8,11 +8,10 @@
   },
   "main": "dist/PDFTool.js",
   "files": [
-    "dist/**",
-    "index.js"
+    "dist/**"
   ],
   "scripts": {
-    "build": "rm -rf dist && babel src -d dist -s --ignore *.test.js",
+    "build": "rm -rf dist/* && babel src -d dist -s --ignore *.test.js",
     "debug:snap": "babel-node --inspect-brk src/pdf-o-rama.js",
     "test": "jest",
     "test:debug": "babel-node --inspect-brk ./node_modules/jest/bin/jest.js --runInBand"
@@ -40,24 +39,26 @@
   },
   "homepage": "https://github.com/KingstonSoftware/pdf-o-rama#readme",
   "devDependencies": {
-    "babel": "^6.23.0",
-    "babel-cli": "^6.26.0",
-    "babel-core": "^6.26.3",
-    "babel-plugin-transform-class-properties": "^6.24.1",
-    "babel-plugin-transform-decorators-legacy": "^1.3.4",
-    "babel-plugin-transform-object-rest-spread": "^6.26.0",
-    "babel-preset-env": "^1.7.0",
-    "jest": "^22.4.4"
+    "@babel/cli": "^7.2.3",
+    "@babel/core": "^7.2.2",
+    "@babel/node": "^7.2.2",
+    "@babel/plugin-proposal-class-properties": "^7.3.0",
+    "@babel/plugin-proposal-optional-chaining": "^7.2.0",
+    "@babel/plugin-syntax-object-rest-spread": "^7.2.0",
+    "@babel/preset-env": "^7.3.1",
+    "jest-cli": "^24.1.0"
   },
   "dependencies": {
+    "@babel/plugin-proposal-decorators": "^7.3.0",
     "auto-bind2": "^1.0.3",
-    "autobind-decorator": "^2.1.0",
-    "chalk": "^2.3.0",
-    "hummus": "^1.0.90",
-    "json5": "^0.5.1",
+    "autobind-decorator": "^2.4.0",
+    "chalk": "^2.4.2",
+    "fs-extra": "^7.0.1",
+    "hummus": "^1.0.95",
+    "json5": "^2.1.0",
     "md5": "^2.2.1",
     "minimist": "^1.2.0",
-    "qrcode": "^1.2.0",
-    "tmp-promise": "^1.0.4"
+    "qrcode": "^1.3.3",
+    "tmp-promise": "^1.0.5"
   }
 }

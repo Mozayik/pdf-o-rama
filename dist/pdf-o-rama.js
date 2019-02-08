@@ -3,30 +3,24 @@
 
 var _PDFTool = require("./PDFTool");
 
-var _chalk = require("chalk");
+var _chalk = _interopRequireDefault(require("chalk"));
 
-var _chalk2 = _interopRequireDefault(_chalk);
-
-var _path = require("path");
-
-var _path2 = _interopRequireDefault(_path);
+var _path = _interopRequireDefault(require("path"));
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 const log = {
   info: function () {
-    console.error(_chalk2.default.green([...arguments].join(" ")));
+    console.error(_chalk.default.green([...arguments].join(" ")));
   },
   error: function () {
-    console.error(_chalk2.default.red("error:", [...arguments].join(" ")));
+    console.error(_chalk.default.red("error:", [...arguments].join(" ")));
   },
   warning: function () {
-    console.error(_chalk2.default.yellow("warning:", [...arguments].join(" ")));
+    console.error(_chalk.default.yellow("warning:", [...arguments].join(" ")));
   }
 };
-
-const tool = new _PDFTool.PDFTool(_path2.default.basename(process.argv[1], ".js"), log);
-
+const tool = new _PDFTool.PDFTool(_path.default.basename(process.argv[1], ".js"), log);
 tool.run(process.argv.slice(2)).then(exitCode => {
   process.exitCode = exitCode;
 }).catch(err => {

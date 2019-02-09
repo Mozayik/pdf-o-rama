@@ -8,12 +8,12 @@
   buildFormat: "full",
   tags: {
     major: 1,
-    minor: 5,
+    minor: 6,
     patch: 0,
     build: 20190208,
-    revision: 1,
+    revision: 0,
     tz: "America/Los_Angeles",
-    sequence: 7
+    sequence: 8
   },
   fileTypes: [
     {

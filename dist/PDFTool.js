@@ -23,6 +23,8 @@ var _md = _interopRequireDefault(require("md5"));
 
 var _autobindDecorator = _interopRequireDefault(require("autobind-decorator"));
 
+var _assert = _interopRequireDefault(require("assert"));
+
 var _class;
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
@@ -47,18 +49,13 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
   }
 
   async concat(options) {
-    if (options.pdfFiles.length < 2) {
-      throw new Error("Must specify at least two PDF files to concatenate");
-    }
+    (0, _assert.default)(options.pdfFiles.length >= 2, "Must specify at least two PDF files to concatenate");
+    (0, _assert.default)(options.outputFile, "No output file specified");
 
     for (let pdfFile of options.pdfFiles) {
       if (!this.fs.existsSync(pdfFile)) {
         throw new Error(`File '${pdfFile}' does not exist`);
       }
-    }
-
-    if (!options.outputFile) {
-      throw new Error("No output file specified");
     }
 
     const pdfWriter = this.hummus.createWriter(options.outputFile);
@@ -71,18 +68,9 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
   }
 
   async fields(options) {
-    if (!options.pdfFile) {
-      throw new Error("Must specify a PDF from which to extract information");
-    }
-
-    if (!this.fs.existsSync(options.pdfFile)) {
-      throw new Error(`File '${options.pdfFile}' does not exist`);
-    }
-
-    if (!options.dataFile) {
-      throw new Error(`No output data file specified`);
-    }
-
+    (0, _assert.default)(options.pdfFile, "Must specify a PDF from which to extract information");
+    (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
+    (0, _assert.default)(options.dataFile, `No output data file specified`);
     this.pdfReader = this.hummus.createReader(options.pdfFile);
     const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), "Root").toPDFDictionary();
 
@@ -126,18 +114,9 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
   }
 
   async strip(options) {
-    if (!options.pdfFile) {
-      throw new Error("Must specify a PDF from which to remove the AcroForm");
-    }
-
-    if (!this.fs.existsSync(options.pdfFile)) {
-      throw new Error(`File '${options.pdfFile}' does not exist`);
-    }
-
-    if (!options.outputFile) {
-      throw new Error(`No output file specified`);
-    }
-
+    (0, _assert.default)(options.pdfFile, "Must specify a PDF from which to remove the AcroForm");
+    (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
+    (0, _assert.default)(options.outputFile, `No output file specified`);
     await this.stripAcroFormAndAnnotations(options.pdfFile, options.outputFile);
   }
 
@@ -165,26 +144,11 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
   }
 
   async fill(options) {
-    if (!options.pdfFile) {
-      throw new Error("Must specify an input PDF file");
-    }
-
-    if (!this.fs.existsSync(options.pdfFile)) {
-      throw new Error(`File '${options.pdfFile}' does not exist`);
-    }
-
-    if (!options.outputFile) {
-      throw new Error("No output file specified");
-    }
-
-    if (!options.dataFile) {
-      throw new Error("Must specify a data file");
-    }
-
-    if (!this.fs.existsSync(options.dataFile)) {
-      throw new Error(`File '${options.dataFile}' does not exist`);
-    }
-
+    (0, _assert.default)(options.pdfFile, "Must specify an input PDF file");
+    (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
+    (0, _assert.default)(options.outputFile, "No output file specified");
+    (0, _assert.default)(options.dataFile, "Must specify a data file");
+    (0, _assert.default)(this.fs.existsSync(options.dataFile), `File '${options.dataFile}' does not exist`);
     let data = null;
 
     try {
@@ -192,16 +156,14 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
         encoding: "utf8"
       })));
     } catch (e) {
-      this.log.error(`Unable to read data file '${options.dataFile}'. ${e.message}`);
-      return -1;
+      throw new Error(`Unable to read data file '${options.dataFile}'. ${e.message}`);
     }
 
     if (data.md5) {
       const buf = await this.fs.readFile(options.pdfFile);
 
       if ((0, _md.default)(buf.buffer) !== data.md5) {
-        this.log.error(`MD5 for ${options.pdfFile} does not match the one in the data file`);
-        return -1;
+        throw new Error(`MD5 for ${options.pdfFile} does not match the one in the data file`);
       }
     }
 
@@ -246,8 +208,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
 
           case "plaintext":
             if (!font) {
-              this.log.error("Font file must be specified for plaintext fields");
-              return -1;
+              throw new Error("Font file must be specified for plaintext fields");
             }
 
             pageContext.q().BT().g(0).Tm(1, 0, 0, 1, x, y + rise).Tf(font, 14).Tj(field.value).ET().Q();
@@ -285,8 +246,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
 
           case "signhere":
             if (!font) {
-              this.log.error("Font file must be specified for signhere fields");
-              return -1;
+              throw new Error("Font file must be specified for signhere fields");
             }
 
             const q = Math.PI / 4.0;
@@ -325,31 +285,11 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
   }
 
   async watermark(options) {
-    if (!options.pdfFile) {
-      this.log.error("Must specify a PDF from which to remove the AcroForm");
-      return -1;
-    }
-
-    if (!this.fs.existsSync(options.pdfFile)) {
-      this.log.error(`File '${options.pdfFile}' does not exist`);
-      return -1;
-    }
-
-    if (!options.watermarkFile) {
-      this.log.error("No watermark file specified");
-      return -1;
-    }
-
-    if (!this.fs.existsSync(options.watermarkFile)) {
-      this.log.error(`File '${options.watermarkFile}' does not exist`);
-      return -1;
-    }
-
-    if (!options.outputFile) {
-      this.log.error("No output file specified");
-      return -1;
-    }
-
+    (0, _assert.default)(options.pdfFile, "Must specify a PDF from which to remove the AcroForm");
+    (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
+    (0, _assert.default)(options.watermarkFile, "No watermark file specified");
+    (0, _assert.default)(this.fs.existsSync(options.watermarkFile), `File '${options.watermarkFile}' does not exist`);
+    (0, _assert.default)(options.outputFile, "No output file specified");
     this.pdfWriter = _hummus.default.createWriter(options.outputFile);
     this.pdfReader = _hummus.default.createReader(options.pdfFile);
     const copyingContext = this.pdfWriter.createPDFCopyingContext(this.pdfReader); // First, read in the watermark PDF and create a
@@ -371,7 +311,6 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     }
 
     this.pdfWriter.end();
-    return 0;
   }
 
   getPDFPageInfo(pdfFile, pageNum) {

@@ -211,14 +211,14 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
               throw new Error("Font file must be specified for plaintext fields");
             }
 
-            pageContext.q().BT().g(0).Tm(1, 0, 0, 1, x, y + rise).Tf(font, 14).Tj(field.value).ET().Q();
+            pageContext.q().BT().g(0).Tm(1, 0, 0, 1, x, y + rise).Tf(font, 14).Tj(field.value || "").ET().Q();
             break;
 
           case "qrcode":
             const pngFileName = await _tmpPromise.default.tmpName({
               postfix: ".png"
             });
-            await _qrcode.default.toFile(pngFileName, field.value);
+            await _qrcode.default.toFile(pngFileName, field.value || "");
             pageModifier.endContext();
             let imageXObject = this.pdfWriter.createFormXObjectFromPNG(pngFileName);
             pageContext = pageModifier.startContext().getContext();
@@ -254,7 +254,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
             let gsID = this.createOpacityExtGState(0.5);
             let formXObject = this.pdfWriter.createFormXObject(0, 0, w, h);
             let gsName = formXObject.getResourcesDictionary().addExtGStateMapping(gsID);
-            formXObject.getContentContext().q().gs(gsName).w(1.0).G(0).rg(1, 0.6, 1).m(0, halfH).l(halfH, 0).l(w, 0).l(w, h).l(halfH, h).h().B().BT().g(0).Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0).Tf(font, 12).Tj(`Sign Here ${field.value}`).ET().Q();
+            formXObject.getContentContext().q().gs(gsName).w(1.0).G(0).rg(1, 0.6, 1).m(0, halfH).l(halfH, 0).l(w, 0).l(w, h).l(halfH, h).h().B().BT().g(0).Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0).Tf(font, 12).Tj(`Sign Here ${field.value || ""}`).ET().Q();
             this.pdfWriter.endFormXObject(formXObject);
             pageContext = pageModifier.startContext().getContext();
             pageContext.q().cm(1, 0, 0, 1, x, y + halfH).cm(Math.cos(q), Math.sin(q), -Math.sin(q), Math.cos(q), 0, 0).cm(1, 0, 0, 1, 0, -halfH) // NOTE: The coordinate space of the XObjects is the same as the page!

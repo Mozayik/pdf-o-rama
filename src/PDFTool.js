@@ -7,6 +7,7 @@ import JSON5 from "json5"
 import QRCode from "qrcode"
 import md5 from "md5"
 import autobind from "autobind-decorator"
+import assert from "assert"
 
 function toText(item) {
   if (item.getType() === hummus.ePDFObjectLiteralString) {
@@ -30,18 +31,16 @@ export class PDFTool {
   }
 
   async concat(options) {
-    if (options.pdfFiles.length < 2) {
-      throw new Error("Must specify at least two PDF files to concatenate")
-    }
+    assert(
+      options.pdfFiles.length >= 2,
+      "Must specify at least two PDF files to concatenate"
+    )
+    assert(options.outputFile, "No output file specified")
 
     for (let pdfFile of options.pdfFiles) {
       if (!this.fs.existsSync(pdfFile)) {
         throw new Error(`File '${pdfFile}' does not exist`)
       }
-    }
-
-    if (!options.outputFile) {
-      throw new Error("No output file specified")
     }
 
     const pdfWriter = this.hummus.createWriter(options.outputFile)
@@ -54,17 +53,15 @@ export class PDFTool {
   }
 
   async fields(options) {
-    if (!options.pdfFile) {
-      throw new Error("Must specify a PDF from which to extract information")
-    }
-
-    if (!this.fs.existsSync(options.pdfFile)) {
-      throw new Error(`File '${options.pdfFile}' does not exist`)
-    }
-
-    if (!options.dataFile) {
-      throw new Error(`No output data file specified`)
-    }
+    assert(
+      options.pdfFile,
+      "Must specify a PDF from which to extract information"
+    )
+    assert(
+      this.fs.existsSync(options.pdfFile),
+      `File '${options.pdfFile}' does not exist`
+    )
+    assert(options.dataFile, `No output data file specified`)
 
     this.pdfReader = this.hummus.createReader(options.pdfFile)
 
@@ -129,17 +126,15 @@ export class PDFTool {
   }
 
   async strip(options) {
-    if (!options.pdfFile) {
-      throw new Error("Must specify a PDF from which to remove the AcroForm")
-    }
-
-    if (!this.fs.existsSync(options.pdfFile)) {
-      throw new Error(`File '${options.pdfFile}' does not exist`)
-    }
-
-    if (!options.outputFile) {
-      throw new Error(`No output file specified`)
-    }
+    assert(
+      options.pdfFile,
+      "Must specify a PDF from which to remove the AcroForm"
+    )
+    assert(
+      this.fs.existsSync(options.pdfFile),
+      `File '${options.pdfFile}' does not exist`
+    )
+    assert(options.outputFile, `No output file specified`)
 
     await this.stripAcroFormAndAnnotations(options.pdfFile, options.outputFile)
   }
@@ -168,25 +163,17 @@ export class PDFTool {
   }
 
   async fill(options) {
-    if (!options.pdfFile) {
-      throw new Error("Must specify an input PDF file")
-    }
-
-    if (!this.fs.existsSync(options.pdfFile)) {
-      throw new Error(`File '${options.pdfFile}' does not exist`)
-    }
-
-    if (!options.outputFile) {
-      throw new Error("No output file specified")
-    }
-
-    if (!options.dataFile) {
-      throw new Error("Must specify a data file")
-    }
-
-    if (!this.fs.existsSync(options.dataFile)) {
-      throw new Error(`File '${options.dataFile}' does not exist`)
-    }
+    assert(options.pdfFile, "Must specify an input PDF file")
+    assert(
+      this.fs.existsSync(options.pdfFile),
+      `File '${options.pdfFile}' does not exist`
+    )
+    assert(options.outputFile, "No output file specified")
+    assert(options.dataFile, "Must specify a data file")
+    assert(
+      this.fs.existsSync(options.dataFile),
+      `File '${options.dataFile}' does not exist`
+    )
 
     let data = null
 
@@ -195,20 +182,18 @@ export class PDFTool {
         await this.fs.readFile(options.dataFile, { encoding: "utf8" })
       )
     } catch (e) {
-      this.log.error(
+      throw new Error(
         `Unable to read data file '${options.dataFile}'. ${e.message}`
       )
-      return -1
     }
 
     if (data.md5) {
       const buf = await this.fs.readFile(options.pdfFile)
 
       if (md5(buf.buffer) !== data.md5) {
-        this.log.error(
+        throw new Error(
           `MD5 for ${options.pdfFile} does not match the one in the data file`
         )
-        return -1
       }
     }
 
@@ -260,8 +245,9 @@ export class PDFTool {
             break
           case "plaintext":
             if (!font) {
-              this.log.error("Font file must be specified for plaintext fields")
-              return -1
+              throw new Error(
+                "Font file must be specified for plaintext fields"
+              )
             }
             pageContext
               .q()
@@ -323,8 +309,7 @@ export class PDFTool {
             break
           case "signhere":
             if (!font) {
-              this.log.error("Font file must be specified for signhere fields")
-              return -1
+              throw new Error("Font file must be specified for signhere fields")
             }
 
             const q = Math.PI / 4.0
@@ -403,30 +388,20 @@ export class PDFTool {
   }
 
   async watermark(options) {
-    if (!options.pdfFile) {
-      this.log.error("Must specify a PDF from which to remove the AcroForm")
-      return -1
-    }
-
-    if (!this.fs.existsSync(options.pdfFile)) {
-      this.log.error(`File '${options.pdfFile}' does not exist`)
-      return -1
-    }
-
-    if (!options.watermarkFile) {
-      this.log.error("No watermark file specified")
-      return -1
-    }
-
-    if (!this.fs.existsSync(options.watermarkFile)) {
-      this.log.error(`File '${options.watermarkFile}' does not exist`)
-      return -1
-    }
-
-    if (!options.outputFile) {
-      this.log.error("No output file specified")
-      return -1
-    }
+    assert(
+      options.pdfFile,
+      "Must specify a PDF from which to remove the AcroForm"
+    )
+    assert(
+      this.fs.existsSync(options.pdfFile),
+      `File '${options.pdfFile}' does not exist`
+    )
+    assert(options.watermarkFile, "No watermark file specified")
+    assert(
+      this.fs.existsSync(options.watermarkFile),
+      `File '${options.watermarkFile}' does not exist`
+    )
+    assert(options.outputFile, "No output file specified")
 
     this.pdfWriter = hummus.createWriter(options.outputFile)
     this.pdfReader = hummus.createReader(options.pdfFile)
@@ -474,7 +449,6 @@ export class PDFTool {
     }
 
     this.pdfWriter.end()
-    return 0
   }
 
   getPDFPageInfo(pdfFile, pageNum) {

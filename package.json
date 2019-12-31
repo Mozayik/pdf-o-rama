@@ -3,6 +3,9 @@
   "private": false,
   "version": "1.7.0",
   "description": "A tool for manipulating PDF files",
+  "engines": {
+    "node": ">=0.10.17 <0.13"
+  },
   "bin": {
     "pdf-o-rama": "dist/pdf-o-rama.js"
   },

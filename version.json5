@@ -7,13 +7,13 @@
   ],
   buildFormat: "full",
   tags: {
-    major: 1,
-    minor: 7,
+    major: 2,
+    minor: 0,
     patch: 0,
-    build: 20191103,
+    build: 20191231,
     revision: 0,
     tz: "America/Los_Angeles",
-    sequence: 11
+    sequence: 12
   },
   fileTypes: [
     {

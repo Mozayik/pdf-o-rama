@@ -1,8 +1,8 @@
 {
-  "name": "pdf-o-rama",
-  "private": true,
+  "name": "@kingstonsoftware/pdf-o-rama",
+  "private": false,
   "version": "1.7.0",
-  "description": "A tool for better PDF form filling",
+  "description": "A tool for manipulating PDF files",
   "bin": {
     "pdf-o-rama": "dist/pdf-o-rama.js"
   },
@@ -14,7 +14,8 @@
     "build": "rm -rf dist/* && babel src -d dist -s --ignore *.test.js",
     "debug:snap": "babel-node --inspect-brk src/pdf-o-rama.js",
     "test": "jest",
-    "test:debug": "babel-node --inspect-brk ./node_modules/jest/bin/jest.js --runInBand"
+    "test:debug": "babel-node --inspect-brk ./node_modules/jest/bin/jest.js --runInBand",
+    "deploy": "npm publish  --access public"
   },
   "jest": {
     "testPathIgnorePatterns": [
@@ -39,26 +40,26 @@
   },
   "homepage": "https://github.com/KingstonSoftware/pdf-o-rama#readme",
   "devDependencies": {
-    "@babel/cli": "^7.6.4",
-    "@babel/core": "^7.6.4",
-    "@babel/node": "^7.6.3",
-    "@babel/plugin-proposal-class-properties": "^7.5.5",
-    "@babel/plugin-proposal-decorators": "^7.6.0",
-    "@babel/plugin-proposal-optional-chaining": "^7.6.0",
-    "@babel/plugin-syntax-object-rest-spread": "^7.2.0",
-    "@babel/preset-env": "^7.6.3",
+    "@babel/cli": "^7.7.7",
+    "@babel/core": "^7.7.7",
+    "@babel/node": "^7.7.7",
+    "@babel/plugin-proposal-class-properties": "^7.7.4",
+    "@babel/plugin-proposal-decorators": "^7.7.4",
+    "@babel/plugin-proposal-optional-chaining": "^7.7.5",
+    "@babel/plugin-syntax-object-rest-spread": "^7.7.4",
+    "@babel/preset-env": "^7.7.7",
     "jest-cli": "^24.9.0"
   },
   "dependencies": {
     "auto-bind2": "^1.0.3",
     "autobind-decorator": "^2.4.0",
-    "chalk": "^2.4.2",
+    "chalk": "^3.0.0",
     "fs-extra": "^8.1.0",
-    "hummus": "^1.0.107",
+    "hummus": "^1.0.108",
     "json5": "^2.1.1",
     "md5": "^2.2.1",
     "minimist": "^1.2.0",
-    "qrcode": "^1.4.2",
+    "qrcode": "^1.4.4",
     "tmp-promise": "^2.0.2"
   }
 }

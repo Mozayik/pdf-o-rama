@@ -23,13 +23,13 @@ Additionally, the tool can embed a specific font into the PDF for use when filli
 
 Install the tool with:
 
-```
-npm install -g KingstonSoftware/pdf-o-rama
+```sh
+npm install -g @kingstonsoftware/pdf-o-rama
 pdf-o-rama help
 ```
 
 or run it with `npx`:
 
-```
-npx KingstonSoftware/pdf-o-rama pdf-o-rama help
+```sh
+npx @kingstonsoftware/pdf-o-rama pdf-o-rama --help
 ```

@@ -624,7 +624,7 @@ and an MD5 hash for the file will be included in the data file.
           return 0;
         }
 
-        await this.fields({
+        return await this.fields({
           pdfFile: args._[0],
           dataFile: args["data-file"],
           outputFile: args["output-file"]

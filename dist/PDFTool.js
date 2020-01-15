@@ -72,14 +72,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
     (0, _assert.default)(options.dataFile, `No output data file specified`);
     this.pdfReader = this.hummus.createReader(options.pdfFile);
-    const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), "Root").toPDFDictionary();
-
-    if (!catalogDict.exists("AcroForm")) {
-      throw new Error("PDF does not have an AcroForm");
-    }
-
-    this.acroformDict = this.pdfReader.queryDictionaryObject(catalogDict, "AcroForm").toPDFDictionary();
-    let fieldsArray = this.acroformDict.exists("Fields") ? this.pdfReader.queryDictionaryObject(this.acroformDict, "Fields").toPDFArray() : null; // Page map is used to get page number from page object ID
+    const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), "Root").toPDFDictionary(); // Page map is used to get page number from page object ID
 
     const numPages = this.pdfReader.getPagesCount();
     this.pageMap = {};
@@ -88,12 +81,27 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
       this.pageMap[this.pdfReader.getPageObjectID(i)] = i;
     }
 
-    let fieldData = {};
-    fieldData.numPages = numPages;
-    fieldData.fields = this.parseFieldsArray(fieldsArray, {}, "");
+    let fieldData = {
+      numPages
+    };
+
+    if (catalogDict.exists("AcroForm")) {
+      this.acroformDict = this.pdfReader.queryDictionaryObject(catalogDict, "AcroForm").toPDFDictionary();
+      let fieldsArray = this.acroformDict.exists("Fields") ? this.pdfReader.queryDictionaryObject(this.acroformDict, "Fields").toPDFArray() : null;
+      fieldData = {};
+      fieldData.numPages = numPages;
+      fieldData.fields = this.parseFieldsArray(fieldsArray, {}, "");
+
+      if (options.outputFile) {
+        await this.stripAcroFormAndAnnotations(options.pdfFile, options.outputFile);
+      }
+    } else {
+      if (options.outputFile) {
+        await this.fs.copyFile(options.pdfFile, options.outputFile);
+      }
+    }
 
     if (options.outputFile) {
-      await this.stripAcroFormAndAnnotations(options.pdfFile, options.outputFile);
       const buf = await this.fs.readFile(options.outputFile);
       fieldData.md5 = (0, _md.default)(buf.buffer);
     }
@@ -515,34 +523,56 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
 
     if (fieldNameT === undefined && !fieldDictionary.exists("Kids") && fieldDictionary.exists("Subtype") && fieldDictionary.queryObject("Subtype").toString() == "Widget") {
       return null;
+    } // NOTE: We don't care about field values
+    //
+    // let result = {
+    //   name: fieldNameT,
+    //   // NOTE: Other fields to consider...
+    //   // alternateName: fieldNameTU,
+    //   // mappingName: fieldNameTM,
+    //   // isNoExport: !!((fieldFlags>>2) & 1),
+    //   rect: fieldRect,
+    //   page: this.pageMap[fieldP],
+    // }
+    //
+    // if (fieldDictionary.exists("Kids")) {
+    //   let kids = this.parseKids(
+    //     fieldDictionary,
+    //     inheritedProperties,
+    //     baseFieldName + fieldNameT + "."
+    //   )
+    //   if (kids) {
+    //     // that would be a non terminal node, otherwise all kids are annotations an null would be returned
+    //     // result["kids"] = kids
+    //   } else {
+    //     // a terminal node, so kids array returned empty
+    //     this.parseFieldsValueData(
+    //       result,
+    //       fieldDictionary,
+    //       fieldFlags,
+    //       inheritedProperties
+    //     )
+    //   }
+    // } else {
+    //   // read fields value data
+    //   this.parseFieldsValueData(
+    //     result,
+    //     fieldDictionary,
+    //     fieldFlags,
+    //     inheritedProperties
+    //   )
+    // }
+
+
+    if (fieldDictionary.exists("Kids")) {
+      return null;
     }
 
-    let result = {
+    return {
       name: fieldNameT,
-      // NOTE: Other fields to consider...
-      // alternateName: fieldNameTU,
-      // mappingName: fieldNameTM,
-      // isNoExport: !!((fieldFlags>>2) & 1),
       rect: fieldRect,
       page: this.pageMap[fieldP]
     };
-
-    if (fieldDictionary.exists("Kids")) {
-      let kids = this.parseKids(fieldDictionary, inheritedProperties, baseFieldName + fieldNameT + ".");
-
-      if (kids) {
-        // that would be a non terminal node, otherwise all kids are annotations an null would be returned
-        result["kids"] = kids;
-      } else {
-        // a terminal node, so kids array returned empty
-        this.parseFieldsValueData(result, fieldDictionary, fieldFlags, inheritedProperties);
-      }
-    } else {
-      // read fields value data
-      this.parseFieldsValueData(result, fieldDictionary, fieldFlags, inheritedProperties);
-    }
-
-    return result;
   }
 
   parseFieldsArray(fieldsArray, inheritedProperties, baseFieldName) {

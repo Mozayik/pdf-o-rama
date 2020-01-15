@@ -702,46 +702,56 @@ export class PDFTool {
       return null
     }
 
-    let result = {
+    // NOTE: We don't care about field values
+    //
+    // let result = {
+    //   name: fieldNameT,
+    //   // NOTE: Other fields to consider...
+    //   // alternateName: fieldNameTU,
+    //   // mappingName: fieldNameTM,
+    //   // isNoExport: !!((fieldFlags>>2) & 1),
+    //   rect: fieldRect,
+    //   page: this.pageMap[fieldP],
+    // }
+    //
+    // if (fieldDictionary.exists("Kids")) {
+    //   let kids = this.parseKids(
+    //     fieldDictionary,
+    //     inheritedProperties,
+    //     baseFieldName + fieldNameT + "."
+    //   )
+
+    //   if (kids) {
+    //     // that would be a non terminal node, otherwise all kids are annotations an null would be returned
+    //     // result["kids"] = kids
+    //   } else {
+    //     // a terminal node, so kids array returned empty
+    //     this.parseFieldsValueData(
+    //       result,
+    //       fieldDictionary,
+    //       fieldFlags,
+    //       inheritedProperties
+    //     )
+    //   }
+    // } else {
+    //   // read fields value data
+    //   this.parseFieldsValueData(
+    //     result,
+    //     fieldDictionary,
+    //     fieldFlags,
+    //     inheritedProperties
+    //   )
+    // }
+
+    if (fieldDictionary.exists("Kids")) {
+      return null
+    }
+
+    return {
       name: fieldNameT,
-      // NOTE: Other fields to consider...
-      // alternateName: fieldNameTU,
-      // mappingName: fieldNameTM,
-      // isNoExport: !!((fieldFlags>>2) & 1),
       rect: fieldRect,
       page: this.pageMap[fieldP],
     }
-
-    if (fieldDictionary.exists("Kids")) {
-      let kids = this.parseKids(
-        fieldDictionary,
-        inheritedProperties,
-        baseFieldName + fieldNameT + "."
-      )
-
-      if (kids) {
-        // that would be a non terminal node, otherwise all kids are annotations an null would be returned
-        result["kids"] = kids
-      } else {
-        // a terminal node, so kids array returned empty
-        this.parseFieldsValueData(
-          result,
-          fieldDictionary,
-          fieldFlags,
-          inheritedProperties
-        )
-      }
-    } else {
-      // read fields value data
-      this.parseFieldsValueData(
-        result,
-        fieldDictionary,
-        fieldFlags,
-        inheritedProperties
-      )
-    }
-
-    return result
   }
 
   parseFieldsArray(fieldsArray, inheritedProperties, baseFieldName) {

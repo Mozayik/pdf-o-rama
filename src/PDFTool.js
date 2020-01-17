@@ -92,8 +92,6 @@ export class PDFTool {
             .toPDFArray()
         : null
 
-      fieldData = {}
-      fieldData.numPages = numPages
       fieldData.fields = this.parseFieldsArray(fieldsArray, {}, "")
 
       if (options.outputFile) {
@@ -103,6 +101,8 @@ export class PDFTool {
         )
       }
     } else {
+      fieldData.fields = []
+
       if (options.outputFile) {
         await this.fs.copyFile(options.pdfFile, options.outputFile)
       }

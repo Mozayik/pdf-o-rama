@@ -52,6 +52,56 @@ export class PDFTool {
     pdfWriter.end()
   }
 
+  parsePageTree(context, dict) {
+    const dictType = dict.queryObject("Type").value
+
+    if (dictType === "Pages") {
+      // Parse the kids of this tree
+      const kids = dict.queryObject("Kids").toJSArray()
+
+      kids.forEach((kid) => {
+        this.parsePageTree(
+          context,
+          this.pdfReader.parseNewObject(kid.getObjectID())
+        )
+      })
+    } else if (dictType === "Page") {
+      // Parse any field annotations on the page
+      let annots = dict.queryObject("Annots")
+
+      if (annots) {
+        annots = annots.toJSArray()
+
+        annots.forEach((annot) => {
+          let annotDict = null
+
+          if (annot.getType() === 9) {
+            annotDict = this.pdfReader.parseNewObject(annot.getObjectID())
+          } else {
+            annotDict = annot
+          }
+
+          const subType = annotDict.queryObject("Subtype").value
+          const hasName = annotDict.exists("T")
+          const hasKids = annotDict.exists("Kids")
+
+          if (subType === "Widget" && !hasKids && hasName) {
+            context.fields.push({
+              name: annotDict.queryObject("T"),
+              page: context.nextPageNum,
+              rect: annotDict
+                .queryObject("Rect")
+                .toJSArray()
+                .map((n) => n.value),
+            })
+          }
+        })
+
+        context.nextPageNum += 1
+      }
+    }
+  }
+
   async fields(options) {
     assert(
       options.pdfFile,
@@ -65,34 +115,22 @@ export class PDFTool {
 
     this.pdfReader = this.hummus.createReader(options.pdfFile)
 
-    const catalogDict = this.pdfReader
-      .queryDictionaryObject(this.pdfReader.getTrailer(), "Root")
-      .toPDFDictionary()
-
-    // Page map is used to get page number from page object ID
-    const numPages = this.pdfReader.getPagesCount()
-
-    this.pageMap = {}
-    for (let i = 0; i < numPages; i++) {
-      this.pageMap[this.pdfReader.getPageObjectID(i)] = i
-    }
-
+    const catalogDict = this.pdfReader.queryDictionaryObject(
+      this.pdfReader.getTrailer(),
+      "Root"
+    )
+    const pagesDict = this.pdfReader.parseNewObject(
+      catalogDict.queryObject("Pages").getObjectID()
+    )
     let fieldData = {
-      numPages,
+      numPages: pagesDict.queryObject("Count").value,
     }
 
     if (catalogDict.exists("AcroForm")) {
-      this.acroformDict = this.pdfReader
-        .queryDictionaryObject(catalogDict, "AcroForm")
-        .toPDFDictionary()
+      const context = { nextPageNum: 1, fields: [] }
 
-      let fieldsArray = this.acroformDict.exists("Fields")
-        ? this.pdfReader
-            .queryDictionaryObject(this.acroformDict, "Fields")
-            .toPDFArray()
-        : null
-
-      fieldData.fields = this.parseFieldsArray(fieldsArray, {}, "")
+      this.parsePageTree(context, pagesDict)
+      fieldData.fields = context.fields
 
       if (options.outputFile) {
         await this.stripAcroFormAndAnnotations(
@@ -184,16 +222,18 @@ export class PDFTool {
       `File '${options.dataFile}' does not exist`
     )
 
-    let data = null
+    let data = options.data
 
-    try {
-      data = await JSON5.parse(
-        await this.fs.readFile(options.dataFile, { encoding: "utf8" })
-      )
-    } catch (e) {
-      throw new Error(
-        `Unable to read data file '${options.dataFile}'. ${e.message}`
-      )
+    if (!data) {
+      try {
+        data = await JSON5.parse(
+          await this.fs.readFile(options.dataFile, { encoding: "utf8" })
+        )
+      } catch (e) {
+        throw new Error(
+          `Unable to read data file '${options.dataFile}'. ${e.message}`
+        )
+      }
     }
 
     if (data.md5) {
@@ -418,8 +458,17 @@ export class PDFTool {
       this.pdfReader
     )
 
+    const getPDFPageInfo = (pdfFile, pageNum) => {
+      const pdfReader = this.hummus.createReader(pdfFile)
+      const page = pdfReader.parsePage(pageNum)
+
+      return {
+        mediaBox: page.getMediaBox(),
+      }
+    }
+
     // First, read in the watermark PDF and create a
-    const watermarkInfo = this.getPDFPageInfo(options.watermarkFile, 0)
+    const watermarkInfo = getPDFPageInfo(options.watermarkFile, 0)
 
     const formIDs = this.pdfWriter.createFormXObjectsFromPDF(
       options.watermarkFile,
@@ -458,318 +507,6 @@ export class PDFTool {
     }
 
     this.pdfWriter.end()
-  }
-
-  getPDFPageInfo(pdfFile, pageNum) {
-    const pdfReader = hummus.createReader(pdfFile)
-    const page = pdfReader.parsePage(pageNum)
-
-    return {
-      mediaBox: page.getMediaBox(),
-    }
-  }
-
-  parseKids(fieldDictionary, inheritedProperties, baseFieldName) {
-    let localEnv = {}
-
-    if (fieldDictionary.exists("FT")) {
-      localEnv["FT"] = fieldDictionary.queryObject("FT").toString()
-    }
-    if (fieldDictionary.exists("Ff")) {
-      localEnv["Ff"] = fieldDictionary.queryObject("Ff").toNumber()
-    }
-    if (fieldDictionary.exists("DA")) {
-      localEnv["DA"] = toText(fieldDictionary.queryObject("DA"))
-    }
-    if (fieldDictionary.exists("Opt")) {
-      localEnv["Opt"] = fieldDictionary.queryObject("Opt").toPDFArray()
-    }
-
-    let result = this.parseFieldsArray(
-      this.pdfReader
-        .queryDictionaryObject(fieldDictionary, "Kids")
-        .toPDFArray(),
-      { ...inheritedProperties, ...localEnv },
-      baseFieldName
-    )
-
-    return result
-  }
-
-  parseOnOffValue(fieldDictionary) {
-    if (fieldDictionary.exists("V")) {
-      let value = fieldDictionary.queryObject("V").toString()
-      if (value === "Off" || value === "") {
-        return false
-      } else {
-        return true
-      }
-    } else {
-      return null
-    }
-  }
-
-  parseRadioButtonValue(fieldDictionary) {
-    if (fieldDictionary.exists("V")) {
-      let value = fieldDictionary.queryObject("V").toString()
-
-      if (value === "Off" || value === "") {
-        return null
-      } else {
-        // using true cause sometimes these are actually checkboxes, and there's no underlying kids
-        let result = true
-        // for radio button this would be an appearance name of a radio button that's turned on. we wanna look for it
-        if (fieldDictionary.exists("Kids")) {
-          let kidsArray = this.pdfReader
-            .queryDictionaryObject(fieldDictionary, "Kids")
-            .toPDFArray()
-
-          for (let i = 0; i < kidsArray.getLength(); ++i) {
-            let widgetDictionary = this.pdfReader
-              .queryArrayObject(kidsArray, i)
-              .toPDFDictionary()
-            // use the dictionary Ap/N dictionary for looking up the appearance stream name
-            let apDictionary = this.pdfReader
-              .queryDictionaryObject(widgetDictionary, "AP")
-              .toPDFDictionary()
-            let nAppearances = this.pdfReader
-              .queryDictionaryObject(apDictionary, "N")
-              .toPDFDictionary()
-
-            if (nAppearances.exists(value)) {
-              // Found!
-              result = i // save the selected index as value
-              break
-            }
-          }
-        }
-
-        return result
-      }
-    } else {
-      return null
-    }
-  }
-
-  parseTextFieldValue(fieldDictionary, fieldName) {
-    // grab field value, may be either a text string or a text stream
-    if (!fieldDictionary.exists(fieldName)) {
-      return null
-    }
-
-    let valueField = this.pdfReader.queryDictionaryObject(
-      fieldDictionary,
-      fieldName
-    )
-
-    if (valueField.getType() == hummus.ePDFObjectLiteralString) {
-      return toText(valueField)
-    } else if (valueField.getType() == hummus.ePDFObjectStream) {
-      let bytes = []
-      let readStream = pdfReader.startReadingFromStream(
-        valueField.toPDFStream()
-      )
-
-      while (readStream.notEnded()) {
-        const readData = readStream.read(1)
-        // do something with the data
-        bytes.push(readData[0])
-      }
-      return new PDFTextString(bytes).toString()
-    } else {
-      return null
-    }
-  }
-
-  parseChoiceValue(fieldDictionary) {
-    if (fieldDictionary.exists("V")) {
-      let valueField = this.pdfReader.queryDictionaryObject(
-        fieldDictionary,
-        "V"
-      )
-
-      if (
-        valueField.getType() == hummus.ePDFObjectLiteralString ||
-        valueField.getType() == hummus.ePDFObjectHexString
-      ) {
-        // text string. read into value
-        return toText(valueField)
-      } else if (valueField.getType == hummus.ePDFObjectArray) {
-        let arrayOfStrings = valueField.toPDFArray().toJSArray()
-        return arrayOfStrings.map(toText)
-      } else {
-        return undefined
-      }
-    } else {
-      return undefined
-    }
-  }
-
-  parseFieldsValueData(result, fieldDictionary, flags, inheritedProperties) {
-    const localFieldType = fieldDictionary.exists("FT")
-      ? fieldDictionary.queryObject("FT").toString()
-      : undefined
-    const fieldType = localFieldType || inheritedProperties["FT"]
-
-    if (!fieldType) {
-      return null // Must be a widget
-    }
-
-    switch (fieldType) {
-      case "Btn": {
-        if ((flags >> 16) & 1) {
-          // push button
-          result["type"] = "button"
-          // no value
-        } else if ((flags >> 15) & 1) {
-          // radio button
-          result["type"] = "radio"
-          result["value"] = this.parseRadioButtonValue(fieldDictionary)
-        } else {
-          // checkbox
-          result["type"] = "checkbox"
-          result["value"] = this.parseOnOffValue(fieldDictionary)
-        }
-        break
-      }
-      case "Tx": {
-        // result['isFileSelect'] = !!(flags>>20 & 1)
-        if ((flags >> 25) & 1) {
-          result["type"] = "richtext"
-          // rich text, value in 'RV'
-          result["value"] = this.parseTextFieldValue(fieldDictionary, "RV")
-          result["plainValue"] = this.parseTextFieldValue(fieldDictionary, "V")
-        } else {
-          result["type"] = "plaintext"
-          result["value"] = this.parseTextFieldValue(fieldDictionary, "V")
-        }
-
-        break
-      }
-      case "Ch": {
-        result["type"] = "choice"
-        result["value"] = this.parseChoiceValue(fieldDictionary)
-        break
-      }
-      case "Sig": {
-        result["type"] = "signature"
-        break
-      }
-    }
-  }
-
-  parseField(fieldDictionary, inheritedProperties, baseFieldName) {
-    let fieldNameT = fieldDictionary.exists("T")
-      ? toText(fieldDictionary.queryObject("T"))
-      : undefined
-    let fieldNameTU = fieldDictionary.exists("TU")
-      ? toText(fieldDictionary.queryObject("TU"))
-      : undefined
-    let fieldNameTM = fieldDictionary.exists("TM")
-      ? toText(fieldDictionary.queryObject("TM"))
-      : undefined
-    let fieldFlags = fieldDictionary.exists("Ff")
-      ? fieldDictionary.queryObject("Ff").toNumber()
-      : undefined
-    let fieldRect = fieldDictionary.exists("Rect")
-      ? fieldDictionary
-          .queryObject("Rect")
-          .toPDFArray()
-          .toJSArray()
-      : undefined
-    let fieldP = fieldDictionary.exists("P")
-      ? fieldDictionary
-          .queryObject("P")
-          .toPDFIndirectObjectReference()
-          .getObjectID()
-      : undefined
-
-    fieldFlags =
-      fieldFlags === undefined ? inheritedProperties["Ff"] : fieldFlags
-    fieldFlags = fieldFlags || 0
-
-    if (fieldRect) {
-      fieldRect = fieldRect.map((r) => r.value)
-    }
-
-    // Assume that if there's no T and no Kids, this is a widget annotation which is not a field
-    if (
-      fieldNameT === undefined &&
-      !fieldDictionary.exists("Kids") &&
-      fieldDictionary.exists("Subtype") &&
-      fieldDictionary.queryObject("Subtype").toString() == "Widget"
-    ) {
-      return null
-    }
-
-    // NOTE: We don't care about field values
-    //
-    // let result = {
-    //   name: fieldNameT,
-    //   // NOTE: Other fields to consider...
-    //   // alternateName: fieldNameTU,
-    //   // mappingName: fieldNameTM,
-    //   // isNoExport: !!((fieldFlags>>2) & 1),
-    //   rect: fieldRect,
-    //   page: this.pageMap[fieldP],
-    // }
-    //
-    // if (fieldDictionary.exists("Kids")) {
-    //   let kids = this.parseKids(
-    //     fieldDictionary,
-    //     inheritedProperties,
-    //     baseFieldName + fieldNameT + "."
-    //   )
-
-    //   if (kids) {
-    //     // that would be a non terminal node, otherwise all kids are annotations an null would be returned
-    //     // result["kids"] = kids
-    //   } else {
-    //     // a terminal node, so kids array returned empty
-    //     this.parseFieldsValueData(
-    //       result,
-    //       fieldDictionary,
-    //       fieldFlags,
-    //       inheritedProperties
-    //     )
-    //   }
-    // } else {
-    //   // read fields value data
-    //   this.parseFieldsValueData(
-    //     result,
-    //     fieldDictionary,
-    //     fieldFlags,
-    //     inheritedProperties
-    //   )
-    // }
-
-    if (fieldDictionary.exists("Kids")) {
-      return null
-    }
-
-    return {
-      name: fieldNameT,
-      rect: fieldRect,
-      page: this.pageMap[fieldP],
-    }
-  }
-
-  parseFieldsArray(fieldsArray, inheritedProperties, baseFieldName) {
-    let result = []
-
-    for (let i = 0; i < fieldsArray.getLength(); ++i) {
-      let fieldResult = this.parseField(
-        this.pdfReader.queryArrayObject(fieldsArray, i).toPDFDictionary(),
-        inheritedProperties,
-        baseFieldName
-      )
-
-      if (fieldResult) {
-        result.push(fieldResult)
-      }
-    }
-
-    return result
   }
 
   async run(argv) {

@@ -11,13 +11,13 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 const log = {
   info: function () {
-    console.error(_chalk.default.green([...arguments].join(" ")));
+    console.log(_chalk.default.green([...arguments].join(" ")));
   },
   error: function () {
     console.error(_chalk.default.red("error:", [...arguments].join(" ")));
   },
   warning: function () {
-    console.error(_chalk.default.yellow("warning:", [...arguments].join(" ")));
+    console.warning(_chalk.default.yellow("warning:", [...arguments].join(" ")));
   }
 };
 const tool = new _PDFTool.PDFTool(_path.default.basename(process.argv[1], ".js"), log);

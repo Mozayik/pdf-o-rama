@@ -72,7 +72,10 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
     (0, _assert.default)(options.dataFile, `No output data file specified`);
     this.pdfReader = this.hummus.createReader(options.pdfFile);
-    const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), "Root").toPDFDictionary(); // Page map is used to get page number from page object ID
+    const catalogDict = this.pdfReader.queryDictionaryObject(this.pdfReader.getTrailer(), "Root").toPDFDictionary();
+    const pagesDict = this.pdfReader.queryDictionaryObject(catalogDict, "Pages").toPDFDictionary();
+    this.log.info(pagesDict.queryObject("Count").value);
+    return; // Page map is used to get page number from page object ID
 
     const numPages = this.pdfReader.getPagesCount();
     this.pageMap = {};
@@ -157,14 +160,16 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     (0, _assert.default)(options.outputFile, "No output file specified");
     (0, _assert.default)(options.dataFile, "Must specify a data file");
     (0, _assert.default)(this.fs.existsSync(options.dataFile), `File '${options.dataFile}' does not exist`);
-    let data = null;
+    let data = options.data;
 
-    try {
-      data = await _json.default.parse((await this.fs.readFile(options.dataFile, {
-        encoding: "utf8"
-      })));
-    } catch (e) {
-      throw new Error(`Unable to read data file '${options.dataFile}'. ${e.message}`);
+    if (!data) {
+      try {
+        data = await _json.default.parse((await this.fs.readFile(options.dataFile, {
+          encoding: "utf8"
+        })));
+      } catch (e) {
+        throw new Error(`Unable to read data file '${options.dataFile}'. ${e.message}`);
+      }
     }
 
     if (data.md5) {

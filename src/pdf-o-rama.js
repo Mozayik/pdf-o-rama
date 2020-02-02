@@ -5,13 +5,13 @@ import path from "path"
 
 const log = {
   info: function() {
-    console.error(chalk.green([...arguments].join(" ")))
+    console.log(chalk.green([...arguments].join(" ")))
   },
   error: function() {
     console.error(chalk.red("error:", [...arguments].join(" ")))
   },
   warning: function() {
-    console.error(chalk.yellow("warning:", [...arguments].join(" ")))
+    console.warning(chalk.yellow("warning:", [...arguments].join(" ")))
   },
 }
 

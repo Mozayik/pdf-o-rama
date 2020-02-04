@@ -150,20 +150,6 @@ export class PDFTool {
     )
   }
 
-  startModifiedDictionaryExcluding(originalDict, excludedKeys) {
-    let originalDictJS = originalDict.toJSObject()
-    let newDict = this.objectsContext.startDictionary()
-
-    Object.getOwnPropertyNames(originalDictJS).forEach((element) => {
-      if (!excludedKeys.includes(element)) {
-        newDict.writeKey(element)
-        this.copyingContext.copyDirectObjectAsIs(originalDictJS[element])
-      }
-    })
-
-    return newDict
-  }
-
   async strip(options) {
     assert(
       options.pdfFile,
@@ -209,7 +195,8 @@ export class PDFTool {
     )
     assert(options.outputFile, "No output file specified")
     assert(
-      (options.dataFile && !options.data) || (!optons.dataFile && options.data),
+      (options.dataFile && !options.data) ||
+        (!options.dataFile && options.data),
       "Must specify a data file or data"
     )
 

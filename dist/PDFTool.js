@@ -136,18 +136,6 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     await this.fs.writeFile(options.dataFile, _json.default.stringify(fieldData, undefined, "  "));
   }
 
-  startModifiedDictionaryExcluding(originalDict, excludedKeys) {
-    let originalDictJS = originalDict.toJSObject();
-    let newDict = this.objectsContext.startDictionary();
-    Object.getOwnPropertyNames(originalDictJS).forEach(element => {
-      if (!excludedKeys.includes(element)) {
-        newDict.writeKey(element);
-        this.copyingContext.copyDirectObjectAsIs(originalDictJS[element]);
-      }
-    });
-    return newDict;
-  }
-
   async strip(options) {
     (0, _assert.default)(options.pdfFile, "Must specify a PDF from which to remove the AcroForm");
     (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
@@ -182,7 +170,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     (0, _assert.default)(options.pdfFile, "Must specify an input PDF file");
     (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
     (0, _assert.default)(options.outputFile, "No output file specified");
-    (0, _assert.default)(options.dataFile && !options.data || !optons.dataFile && options.data, "Must specify a data file or data");
+    (0, _assert.default)(options.dataFile && !options.data || !options.dataFile && options.data, "Must specify a data file or data");
     let data = options.data;
 
     if (!data) {

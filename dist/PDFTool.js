@@ -29,16 +29,6 @@ var _class;
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-function toText(item) {
-  if (item.getType() === _hummus.default.ePDFObjectLiteralString) {
-    return item.toPDFLiteralString().toText();
-  } else if (item.getType() === _hummus.default.ePDFObjectHexString) {
-    return item.toPDFHexString().toText();
-  } else {
-    return item.value;
-  }
-}
-
 let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
   constructor(toolName, log, container) {
     container = container || {};
@@ -85,7 +75,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
         annots.forEach(annot => {
           let annotDict = null;
 
-          if (annot.getType() === 9) {
+          if (annot.getType() === this.hummus.ePDFObjectIndirectObjectReference) {
             annotDict = this.pdfReader.parseNewObject(annot.getObjectID());
           } else {
             annotDict = annot;
@@ -192,8 +182,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     (0, _assert.default)(options.pdfFile, "Must specify an input PDF file");
     (0, _assert.default)(this.fs.existsSync(options.pdfFile), `File '${options.pdfFile}' does not exist`);
     (0, _assert.default)(options.outputFile, "No output file specified");
-    (0, _assert.default)(options.dataFile, "Must specify a data file");
-    (0, _assert.default)(this.fs.existsSync(options.dataFile), `File '${options.dataFile}' does not exist`);
+    (0, _assert.default)(options.dataFile && !options.data || !optons.dataFile && options.data, "Must specify a data file or data");
     let data = options.data;
 
     if (!data) {
@@ -210,7 +199,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
       const buf = await this.fs.readFile(options.pdfFile);
 
       if ((0, _md.default)(buf.buffer) !== data.md5) {
-        throw new Error(`MD5 for ${options.pdfFile} does not match the one in the data file`);
+        throw new Error(`MD5 for ${options.pdfFile} does not match the one in the data`);
       }
     }
 

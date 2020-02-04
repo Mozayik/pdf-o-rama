@@ -9,16 +9,6 @@ import md5 from "md5"
 import autobind from "autobind-decorator"
 import assert from "assert"
 
-function toText(item) {
-  if (item.getType() === hummus.ePDFObjectLiteralString) {
-    return item.toPDFLiteralString().toText()
-  } else if (item.getType() === hummus.ePDFObjectHexString) {
-    return item.toPDFHexString().toText()
-  } else {
-    return item.value
-  }
-}
-
 @autobind
 export class PDFTool {
   constructor(toolName, log, container) {
@@ -75,7 +65,9 @@ export class PDFTool {
         annots.forEach((annot) => {
           let annotDict = null
 
-          if (annot.getType() === 9) {
+          if (
+            annot.getType() === this.hummus.ePDFObjectIndirectObjectReference
+          ) {
             annotDict = this.pdfReader.parseNewObject(annot.getObjectID())
           } else {
             annotDict = annot
@@ -216,10 +208,9 @@ export class PDFTool {
       `File '${options.pdfFile}' does not exist`
     )
     assert(options.outputFile, "No output file specified")
-    assert(options.dataFile, "Must specify a data file")
     assert(
-      this.fs.existsSync(options.dataFile),
-      `File '${options.dataFile}' does not exist`
+      (options.dataFile && !options.data) || (!optons.dataFile && options.data),
+      "Must specify a data file or data"
     )
 
     let data = options.data
@@ -241,7 +232,7 @@ export class PDFTool {
 
       if (md5(buf.buffer) !== data.md5) {
         throw new Error(
-          `MD5 for ${options.pdfFile} does not match the one in the data file`
+          `MD5 for ${options.pdfFile} does not match the one in the data`
         )
       }
     }

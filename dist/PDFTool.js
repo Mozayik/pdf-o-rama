@@ -68,9 +68,13 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
       });
     } else if (dictType === "Page") {
       // Parse any field annotations on the page
-      let annots = dict.queryObject("Annots");
+      let annots = dict.exists("Annots") ? dict.queryObject("Annots") : null;
 
       if (annots) {
+        if (annots.getType() === this.hummus.ePDFObjectIndirectObjectReference) {
+          annots = this.pdfReader.parseNewObject(annots.getObjectID());
+        }
+
         annots = annots.toJSArray();
         annots.forEach(annot => {
           let annotDict = null;
@@ -87,7 +91,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
 
           if (subType === "Widget" && !hasKids && hasName) {
             context.fields.push({
-              name: annotDict.queryObject("T"),
+              name: annotDict.queryObject("T").value,
               page: context.nextPageNum,
               rect: annotDict.queryObject("Rect").toJSArray().map(n => n.value)
             });

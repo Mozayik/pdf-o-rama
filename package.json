@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "clean": "rm -rf dist/*",
-    "build": "babel src -d dist -s --ignore *.test.js",
+    "build": "npm run clean && babel src -d dist -s --ignore *.test.js",
     "debug": "node --inspect-brk -- dist/pdf-o-rama.js",
     "test": "jest",
     "test:debug": "babel-node --inspect-brk -- ./node_modules/jest/bin/jest.js --runInBand",

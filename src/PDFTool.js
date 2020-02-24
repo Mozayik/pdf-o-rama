@@ -21,25 +21,26 @@ export class PDFTool {
   }
 
   async concat(options) {
-    assert(
-      options.pdfFiles.length >= 2,
-      "Must specify at least two PDF files to concatenate"
-    )
+    assert(options.pdfFiles.length !== 0, "Must specify at least one PDF file")
     assert(options.outputFile, "No output file specified")
 
-    for (let pdfFile of options.pdfFiles) {
-      if (!this.fs.existsSync(pdfFile)) {
-        throw new Error(`File '${pdfFile}' does not exist`)
+    if (options.pdfFiles.length >= 2) {
+      for (let pdfFile of options.pdfFiles) {
+        if (!this.fs.existsSync(pdfFile)) {
+          throw new Error(`File '${pdfFile}' does not exist`)
+        }
       }
+
+      const pdfWriter = this.hummus.createWriter(options.outputFile)
+
+      for (let pdfFile of options.pdfFiles) {
+        pdfWriter.appendPDFPagesFromPDF(pdfFile)
+      }
+
+      pdfWriter.end()
+    } else {
+      this.fs.copyFile(options.pdfFiles[0], options.outputFile)
     }
-
-    const pdfWriter = this.hummus.createWriter(options.outputFile)
-
-    for (let pdfFile of options.pdfFiles) {
-      pdfWriter.appendPDFPagesFromPDF(pdfFile)
-    }
-
-    pdfWriter.end()
   }
 
   parsePageTree(context, dict) {

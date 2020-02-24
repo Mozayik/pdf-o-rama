@@ -11,7 +11,7 @@ const log = {
     console.error(chalk.red("error:", [...arguments].join(" ")))
   },
   warning: function() {
-    console.warning(chalk.yellow("warning:", [...arguments].join(" ")))
+    console.error(chalk.yellow("warning:", [...arguments].join(" ")))
   },
 }
 

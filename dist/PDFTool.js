@@ -119,7 +119,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
 
     if (catalogDict.exists("AcroForm")) {
       const context = {
-        nextPageNum: 1,
+        nextPageNum: 0,
         fields: []
       };
       this.parsePageTree(context, pagesDict);
@@ -220,8 +220,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     const numPages = this.pdfReader.getPagesCount();
 
     for (let i = 0; i < numPages; i++) {
-      const page = this.pdfReader.parsePage(i);
-      const pageModifier = new _hummus.default.PDFPageModifier(this.pdfWriter, 0);
+      const pageModifier = new _hummus.default.PDFPageModifier(this.pdfWriter, i);
       let pageContext = pageModifier.startContext().getContext();
       const fields = data.fields.filter(f => f.page === i);
 

@@ -9,11 +9,11 @@
   tags: {
     major: 2,
     minor: 2,
-    patch: 4,
+    patch: 5,
     build: 20200223,
     revision: 0,
     tz: "America/Los_Angeles",
-    sequence: 22
+    sequence: 23
   },
   fileTypes: [
     {

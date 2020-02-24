@@ -17,7 +17,7 @@ const log = {
     console.error(_chalk.default.red("error:", [...arguments].join(" ")));
   },
   warning: function () {
-    console.warning(_chalk.default.yellow("warning:", [...arguments].join(" ")));
+    console.error(_chalk.default.yellow("warning:", [...arguments].join(" ")));
   }
 };
 const tool = new _PDFTool.PDFTool(_path.default.basename(process.argv[1], ".js"), log);

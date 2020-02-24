@@ -39,7 +39,7 @@ export class PDFTool {
 
       pdfWriter.end()
     } else {
-      this.fs.copyFile(options.pdfFiles[0], options.outputFile)
+      await this.fs.copyFile(options.pdfFiles[0], options.outputFile)
     }
   }
 

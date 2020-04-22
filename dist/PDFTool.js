@@ -13,7 +13,7 @@ var _fsExtra = _interopRequireDefault(require("fs-extra"));
 
 var _tmpPromise = _interopRequireDefault(require("tmp-promise"));
 
-var _hummus = _interopRequireDefault(require("hummus"));
+var _hummus = _interopRequireDefault(require("@kingstonsoftware/hummus"));
 
 var _json = _interopRequireDefault(require("json5"));
 
@@ -220,7 +220,7 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     const numPages = this.pdfReader.getPagesCount();
 
     for (let i = 0; i < numPages; i++) {
-      const pageModifier = new _hummus.default.PDFPageModifier(this.pdfWriter, i);
+      const pageModifier = new _hummus.default.PDFPageModifier(this.pdfWriter, i, true);
       let pageContext = pageModifier.startContext().getContext();
       const fields = data.fields.filter(f => f.page === i);
 
@@ -280,15 +280,21 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
               throw new Error("Font file must be specified for signhere fields");
             }
 
-            const q = Math.PI / 4.0;
             pageModifier.endContext();
-            let gsID = this.createOpacityExtGState(0.5);
-            let formXObject = this.pdfWriter.createFormXObject(0, 0, w, h);
-            let gsName = formXObject.getResourcesDictionary().addExtGStateMapping(gsID);
-            formXObject.getContentContext().q().gs(gsName).w(1.0).G(0).rg(1, 0.6, 1).m(0, halfH).l(halfH, 0).l(w, 0).l(w, h).l(halfH, h).h().B().BT().g(0).Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0).Tf(font, 12).Tj(`Sign Here ${field.value || ""}`).ET().Q();
+            const gsID = this.createExtGState(0.5);
+            const formXObject = this.pdfWriter.createFormXObject(0, 0, w, h);
+            const gsName = formXObject.getResourcesDictionary().addExtGStateMapping(gsID);
+            formXObject.getContentContext().q().gs(gsName).rg(1, 0.6, 1).m(0, halfH).l(halfH, 0).l(w, 0).l(w, h).l(halfH, h).f().G(0).J(0).w(1).m(halfH, h).l(0, halfH).l(halfH, 0).S().w(2).m(halfH, 0).l(w, 0).l(w, h).l(halfH, h).S().BT().g(0).Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0).Tf(font, 12).Tj(`Sign Here ${field.value || ""}`).ET().Q();
             this.pdfWriter.endFormXObject(formXObject);
             pageContext = pageModifier.startContext().getContext();
-            pageContext.q().cm(1, 0, 0, 1, x, y + halfH).cm(Math.cos(q), Math.sin(q), -Math.sin(q), Math.cos(q), 0, 0).cm(1, 0, 0, 1, 0, -halfH) // NOTE: The coordinate space of the XObjects is the same as the page!
+            const q = Math.PI / 4.0; // 45 degrees
+            // The sign-here arrow is the same height as the field box,
+            // points to the bottom left corner of the box and is at 45 degrees
+
+            pageContext.q().cm(1, 0, 0, 1, x, y) // Translate
+            .cm(Math.cos(q), Math.sin(q), -Math.sin(q), Math.cos(q), 0, 0) // Rotate
+            .cm(1, 0, 0, 1, 0, -halfH) // Translate
+            // NOTE: The coordinate space of the XObjects is the same as the page!
             .doXObject(formXObject).Q();
             break;
 
@@ -304,14 +310,20 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     this.pdfWriter.end();
   }
 
-  createOpacityExtGState(opacity) {
+  createExtGState(opacity) {
     const context = this.pdfWriter.getObjectsContext();
     const id = context.startNewIndirectObject();
-    const dict = context.startDictionary();
-    dict.writeKey("type").writeNameValue("ExtGState").writeKey("ca");
+    const dict = context.startDictionary(); // See Section 4.3.4
+
+    dict.writeKey("type").writeNameValue("ExtGState").writeKey("ca"); // Non-stroking opacity
+
     context.writeNumber(opacity).endLine();
-    dict.writeKey("CA");
-    context.writeNumber(opacity).endLine().endDictionary(dict);
+    dict.writeKey("CA"); // Stroking opacity
+
+    context.writeNumber(opacity).endLine();
+    dict.writeKey("SA"); // Turn on stroke adjustment
+
+    context.writeBoolean(true).endLine().endDictionary(dict);
     return id;
   }
 

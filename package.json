@@ -1,7 +1,7 @@
 {
   "name": "@kingstonsoftware/pdf-o-rama",
   "private": false,
-  "version": "2.2.6",
+  "version": "2.2.7",
   "description": "A tool for manipulating PDF files",
   "engines": {
     "node": ">=10.17.0 <13.0.0"

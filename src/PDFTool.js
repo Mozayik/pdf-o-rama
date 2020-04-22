@@ -2,7 +2,7 @@ import parseArgs from "minimist"
 import { fullVersion } from "./version"
 import fs from "fs-extra"
 import tmp from "tmp-promise"
-import hummus from "hummus"
+import hummus from "@kingstonsoftware/hummus"
 import JSON5 from "json5"
 import QRCode from "qrcode"
 import md5 from "md5"
@@ -255,7 +255,7 @@ export class PDFTool {
     const numPages = this.pdfReader.getPagesCount()
 
     for (let i = 0; i < numPages; i++) {
-      const pageModifier = new hummus.PDFPageModifier(this.pdfWriter, i)
+      const pageModifier = new hummus.PDFPageModifier(this.pdfWriter, i, true)
       let pageContext = pageModifier.startContext().getContext()
       const fields = data.fields.filter((f) => f.page === i)
 
@@ -269,12 +269,7 @@ export class PDFTool {
 
         switch (field.type) {
           case "highlight":
-            pageContext
-              .q()
-              .rg(1, 1, 0.6)
-              .re(x, y, w, h)
-              .f()
-              .Q()
+            pageContext.q().rg(1, 1, 0.6).re(x, y, w, h).f().Q()
             break
           case "plaintext":
             if (!font) {
@@ -303,25 +298,15 @@ export class PDFTool {
             )
             pageContext = pageModifier.startContext().getContext()
 
-            pageContext
-              .q()
-              .cm(1, 0, 0, 1, x, y)
-              .doXObject(imageXObject)
-              .Q()
+            pageContext.q().cm(1, 0, 0, 1, x, y).doXObject(imageXObject).Q()
 
             fs.unlinkSync(pngFileName)
             break
           case "checkbox":
-            pageContext
-              .q()
-              .G(0)
-              .w(2.5)
+            pageContext.q().G(0).w(2.5)
 
             if (options.checkboxBorders) {
-              pageContext
-                .J(2)
-                .re(x, y, w, h)
-                .S()
+              pageContext.J(2).re(x, y, w, h).S()
             }
 
             if (!!field.value) {
@@ -345,13 +330,11 @@ export class PDFTool {
               throw new Error("Font file must be specified for signhere fields")
             }
 
-            const q = Math.PI / 4.0
-
             pageModifier.endContext()
 
-            let gsID = this.createOpacityExtGState(0.5)
-            let formXObject = this.pdfWriter.createFormXObject(0, 0, w, h)
-            let gsName = formXObject
+            const gsID = this.createExtGState(0.5)
+            const formXObject = this.pdfWriter.createFormXObject(0, 0, w, h)
+            const gsName = formXObject
               .getResourcesDictionary()
               .addExtGStateMapping(gsID)
 
@@ -359,16 +342,26 @@ export class PDFTool {
               .getContentContext()
               .q()
               .gs(gsName)
-              .w(1.0)
-              .G(0)
               .rg(1, 0.6, 1)
               .m(0, halfH)
               .l(halfH, 0)
               .l(w, 0)
               .l(w, h)
               .l(halfH, h)
-              .h()
-              .B()
+              .f()
+              .G(0)
+              .J(0)
+              .w(1)
+              .m(halfH, h)
+              .l(0, halfH)
+              .l(halfH, 0)
+              .S()
+              .w(2)
+              .m(halfH, 0)
+              .l(w, 0)
+              .l(w, h)
+              .l(halfH, h)
+              .S()
               .BT()
               .g(0)
               .Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0)
@@ -380,11 +373,15 @@ export class PDFTool {
 
             pageContext = pageModifier.startContext().getContext()
 
+            const q = Math.PI / 4.0 // 45 degrees
+
+            // The sign-here arrow is the same height as the field box,
+            // points to the bottom left corner of the box and is at 45 degrees
             pageContext
               .q()
-              .cm(1, 0, 0, 1, x, y + halfH)
-              .cm(Math.cos(q), Math.sin(q), -Math.sin(q), Math.cos(q), 0, 0)
-              .cm(1, 0, 0, 1, 0, -halfH)
+              .cm(1, 0, 0, 1, x, y) // Translate
+              .cm(Math.cos(q), Math.sin(q), -Math.sin(q), Math.cos(q), 0, 0) // Rotate
+              .cm(1, 0, 0, 1, 0, -halfH) // Translate
               // NOTE: The coordinate space of the XObjects is the same as the page!
               .doXObject(formXObject)
               .Q()
@@ -401,21 +398,18 @@ export class PDFTool {
     this.pdfWriter.end()
   }
 
-  createOpacityExtGState(opacity) {
+  createExtGState(opacity) {
     const context = this.pdfWriter.getObjectsContext()
     const id = context.startNewIndirectObject()
     const dict = context.startDictionary()
 
-    dict
-      .writeKey("type")
-      .writeNameValue("ExtGState")
-      .writeKey("ca")
+    // See Section 4.3.4
+    dict.writeKey("type").writeNameValue("ExtGState").writeKey("ca") // Non-stroking opacity
     context.writeNumber(opacity).endLine()
-    dict.writeKey("CA")
-    context
-      .writeNumber(opacity)
-      .endLine()
-      .endDictionary(dict)
+    dict.writeKey("CA") // Stroking opacity
+    context.writeNumber(opacity).endLine()
+    dict.writeKey("SA") // Turn on stroke adjustment
+    context.writeBoolean(true).endLine().endDictionary(dict)
 
     return id
   }

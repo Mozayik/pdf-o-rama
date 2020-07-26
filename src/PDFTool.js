@@ -85,13 +85,24 @@ export class PDFTool {
           const hasKids = annotDict.exists("Kids")
 
           if (subType === "Widget" && !hasKids && hasName) {
+            let rect = annotDict
+              .queryObject("Rect")
+              .toJSArray()
+              .map((n) => n.value)
+
+            // We want the rect in lower left, top right order
+            if (rect[1] > rect[3]) {
+              rect = [rect[2], rect[3], rect[0], rect[1]]
+
+              if (rect[0] > rect[2]) {
+                rect = [rect[2], rect[1], rect[0], rect[3]]
+              }
+            }
+
             context.fields.push({
               name: annotDict.queryObject("T").value,
               page: context.nextPageNum,
-              rect: annotDict
-                .queryObject("Rect")
-                .toJSArray()
-                .map((n) => n.value),
+              rect,
             })
           }
         })
@@ -207,6 +218,10 @@ export class PDFTool {
       "Must specify a data file or data"
     )
 
+    if (!options.fontSize) {
+      options.fontSize = 12
+    }
+
     let data = options.data
 
     if (!data) {
@@ -241,7 +256,7 @@ export class PDFTool {
 
     if (options.fontFile) {
       font = this.pdfWriter.getFontForFile(options.fontFile)
-      fontDims = font.calculateTextDimensions("X", 14)
+      fontDims = font.calculateTextDimensions("X", options.fontSize)
     }
 
     const catalogDict = this.pdfReader
@@ -260,12 +275,16 @@ export class PDFTool {
       const fields = data.fields.filter((f) => f.page === i)
 
       for (let field of fields) {
+        const name = field.name
+        const value = field.value
         const x = field.rect[0]
         const y = field.rect[1]
         const w = field.rect[2] - x
         const h = field.rect[3] - y
-        const rise = h / 4.0
-        const halfH = h / 2
+
+        if (!name) {
+          throw new Error(`Field at index ${i} does not have a 'name' property`)
+        }
 
         switch (field.type) {
           case "highlight":
@@ -274,23 +293,38 @@ export class PDFTool {
           case "plaintext":
             if (!font) {
               throw new Error(
-                "Font file must be specified for plaintext fields"
+                `Field '${name}'; a font file must be specified for 'plaintext' fields`
               )
             }
+            if (value === undefined || value === null) {
+              throw new Error(`Field '${name}' must not be null or undefined`)
+            }
+
             pageContext
               .q()
               .BT()
               .g(0)
-              .Tm(1, 0, 0, 1, x, y + rise)
-              .Tf(font, 14) // TODO: Passing in font size
-              .Tj(field.value?.toString() || "")
+              .Ts(h / 6.0) // Text rise Table 5.2
+              .Tm(1, 0, 0, 1, x, y)
+              .Tf(font, options.fontSize)
+              .Tj(value.toString())
               .ET()
               .Q()
             break
           case "qrcode":
+            if (value === undefined || value === null) {
+              throw new Error(`Field '${name}' must not be null or undefined`)
+            }
+
+            if (typeof value === "string" && value.length === 0) {
+              throw new Error(
+                `QR code field '${name}' value must be a non-empty string`
+              )
+            }
+
             const pngFileName = await tmp.tmpName({ postfix: ".png" })
 
-            await QRCode.toFile(pngFileName, field.value?.toString() || "12345")
+            await QRCode.toFile(pngFileName, value)
 
             pageModifier.endContext()
             let imageXObject = this.pdfWriter.createFormXObjectFromPNG(
@@ -309,7 +343,7 @@ export class PDFTool {
               pageContext.J(2).re(x, y, w, h).S()
             }
 
-            if (!!field.value) {
+            if (!!value) {
               const dx = w / 5.0
               const dy = h / 5.0
 
@@ -326,8 +360,14 @@ export class PDFTool {
             pageContext.Q()
             break
           case "signhere":
+            const halfH = h / 2
+
             if (!font) {
               throw new Error("Font file must be specified for signhere fields")
+            }
+
+            if (value === undefined || value === null) {
+              throw new Error(`Field '${name}' must not be null or undefined`)
             }
 
             pageModifier.endContext()
@@ -366,7 +406,7 @@ export class PDFTool {
               .g(0)
               .Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0)
               .Tf(font, 12)
-              .Tj(`Sign Here ${field.value || ""}`)
+              .Tj(`Sign Here ${value.toString()}`)
               .ET()
               .Q()
             this.pdfWriter.endFormXObject(formXObject)
@@ -387,7 +427,13 @@ export class PDFTool {
               .Q()
             break
           default:
-            this.log.warning(`Unknown field type ${field.type}`)
+            if (field.type === undefined) {
+              this.log.warning(`Field '${field.name}' hos no 'type' defined`)
+            } else {
+              this.log.warning(
+                `Field '${field.name}' is of unknown type '${field.type}'`
+              )
+            }
             break
         }
       }
@@ -489,13 +535,20 @@ export class PDFTool {
 
   async run(argv) {
     const options = {
-      string: ["output-file", "watermark-file", "data-file", "font-file"],
+      string: [
+        "output-file",
+        "watermark-file",
+        "data-file",
+        "font-file",
+        "font-size",
+      ],
       boolean: ["help", "version", "checkbox-borders", "debug"],
       alias: {
         o: "output-file",
         w: "watermark-file",
         d: "data-file",
         f: "font-file",
+        s: "font-size",
         c: "checkbox-borders",
       },
     }
@@ -601,6 +654,7 @@ Options:
 --output-file, -o       Output PDF file
 --data-file, -d         Input JSON5 data file
 --font-file, -f         Input font file name to use for text fields
+--font-size, -s         Input font size in points
 --checkbox-borders, -c  Put borders around checkboxes
 
 Notes:
@@ -613,6 +667,7 @@ Inserts 'form' data into the pages of the PDF.
           outputFile: args["output-file"],
           dataFile: args["data-file"],
           fontFile: args["font-file"],
+          fontSize: parseInt(args["font-size"]),
           checkboxBorders: !!args["checkbox-borders"],
         })
       case "help":

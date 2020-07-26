@@ -282,15 +282,15 @@ export class PDFTool {
               .BT()
               .g(0)
               .Tm(1, 0, 0, 1, x, y + rise)
-              .Tf(font, 14)
-              .Tj(field.value || "")
+              .Tf(font, 14) // TODO: Passing in font size
+              .Tj(field.value?.toString() || "")
               .ET()
               .Q()
             break
           case "qrcode":
             const pngFileName = await tmp.tmpName({ postfix: ".png" })
 
-            await QRCode.toFile(pngFileName, field.value || "")
+            await QRCode.toFile(pngFileName, field.value?.toString() || "12345")
 
             pageModifier.endContext()
             let imageXObject = this.pdfWriter.createFormXObjectFromPNG(

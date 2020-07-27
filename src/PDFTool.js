@@ -275,16 +275,20 @@ export class PDFTool {
       const fields = data.fields.filter((f) => f.page === i)
 
       for (let field of fields) {
+        if (!field.name) {
+          throw new Error(`Field at index ${i} does not have a 'name' property`)
+        }
+
+        if (!field.rect) {
+          throw new Error(`Field at index ${i} does not have a 'rect' property`)
+        }
+
         const name = field.name
         const value = field.value
         const x = field.rect[0]
         const y = field.rect[1]
         const w = field.rect[2] - x
         const h = field.rect[3] - y
-
-        if (!name) {
-          throw new Error(`Field at index ${i} does not have a 'name' property`)
-        }
 
         switch (field.type) {
           case "highlight":
@@ -330,9 +334,17 @@ export class PDFTool {
             let imageXObject = this.pdfWriter.createFormXObjectFromPNG(
               pngFileName
             )
-            pageContext = pageModifier.startContext().getContext()
 
-            pageContext.q().cm(1, 0, 0, 1, x, y).doXObject(imageXObject).Q()
+            const imageDims = this.pdfWriter.getImageDimensions(pngFileName)
+
+            console.log(imageDims)
+
+            pageContext = pageModifier.startContext().getContext()
+            pageContext
+              .q()
+              .cm(w / imageDims.width, 0, 0, h / imageDims.height, x, y)
+              .doXObject(imageXObject)
+              .Q()
 
             fs.unlinkSync(pngFileName)
             break

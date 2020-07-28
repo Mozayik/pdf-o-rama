@@ -300,9 +300,6 @@ export class PDFTool {
                 `Field '${name}'; a font file must be specified for 'plaintext' fields`
               )
             }
-            if (value === undefined || value === null) {
-              throw new Error(`Field '${name}' must not be null or undefined`)
-            }
 
             pageContext
               .q()
@@ -311,24 +308,14 @@ export class PDFTool {
               .Ts(h / 6.0) // Text rise Table 5.2
               .Tm(1, 0, 0, 1, x, y)
               .Tf(font, options.fontSize)
-              .Tj(value.toString())
+              .Tj(value?.toString() || "")
               .ET()
               .Q()
             break
           case "qrcode":
-            if (value === undefined || value === null) {
-              throw new Error(`Field '${name}' must not be null or undefined`)
-            }
-
-            if (typeof value === "string" && value.length === 0) {
-              throw new Error(
-                `QR code field '${name}' value must be a non-empty string`
-              )
-            }
-
             const pngFileName = await tmp.tmpName({ postfix: ".png" })
 
-            await QRCode.toFile(pngFileName, value)
+            await QRCode.toFile(pngFileName, value?.toString() || "12345")
 
             pageModifier.endContext()
             let imageXObject = this.pdfWriter.createFormXObjectFromPNG(
@@ -378,10 +365,6 @@ export class PDFTool {
               throw new Error("Font file must be specified for signhere fields")
             }
 
-            if (value === undefined || value === null) {
-              throw new Error(`Field '${name}' must not be null or undefined`)
-            }
-
             pageModifier.endContext()
 
             const gsID = this.createExtGState(0.5)
@@ -418,7 +401,7 @@ export class PDFTool {
               .g(0)
               .Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0)
               .Tf(font, 12)
-              .Tj(`Sign Here ${value.toString()}`)
+              .Tj(`Sign Here ${value?.toString() || ""}`)
               .ET()
               .Q()
             this.pdfWriter.endFormXObject(formXObject)

@@ -308,7 +308,7 @@ export class PDFTool {
               .Ts(h / 6.0) // Text rise Table 5.2
               .Tm(1, 0, 0, 1, x, y)
               .Tf(font, options.fontSize)
-              .Tj(value?.toString() || "")
+              .Tj(" " + (value?.toString() || ""))
               .ET()
               .Q()
             break
@@ -323,8 +323,6 @@ export class PDFTool {
             )
 
             const imageDims = this.pdfWriter.getImageDimensions(pngFileName)
-
-            console.log(imageDims)
 
             pageContext = pageModifier.startContext().getContext()
             pageContext
@@ -528,6 +526,35 @@ export class PDFTool {
     this.pdfWriter.end()
   }
 
+  async merge(options) {
+    assert(options.fromJsonFile, "A from JSON file must be given")
+    assert(options.toJsonFile, "A from JSON file must be given")
+
+    const fromData = JSON5.parse(await this.fs.readFile(options.fromJsonFile))
+    const toData = JSON5.parse(await this.fs.readFile(options.toJsonFile))
+    const toFieldMap = new Map(
+      toData.fields.map((field) => [field.name, field])
+    )
+
+    for (const fromField of fromData.fields) {
+      let toField = toFieldMap.get(fromField.name)
+
+      if (toField) {
+        toField.rect = fromField.rect
+        toField.page = fromField.page
+      } else {
+        toField = { ...fromField }
+        toData.fields.push(toField)
+        toFieldMap.set(toField.name, toField)
+      }
+    }
+
+    await this.fs.writeFile(
+      options.toJsonFile,
+      JSON5.stringify(toData, undefined, "  ")
+    )
+  }
+
   async run(argv) {
     const options = {
       string: [
@@ -620,6 +647,21 @@ Strips any AcroForm and page annotations from the document.
         return await this.strip({
           pdfFile: args._[0],
           outputFile: args["output-file"],
+        })
+      case "merge":
+        if (args.help) {
+          this.log.info(`
+  Usage: ${this.toolName} merge <from-json-file> <to-json-file>
+
+  Notes:
+  Merges the pages and rectangles and any new entries from one JSON5 data file another.
+  The merge will never delete fields, only add or modify them.
+  `)
+          return 0
+        }
+        return await this.merge({
+          fromJsonFile: args._[0],
+          toJsonFile: args._[1],
         })
       case "watermark":
         if (args.help) {

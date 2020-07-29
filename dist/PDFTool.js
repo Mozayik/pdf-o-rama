@@ -198,9 +198,9 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
 
     if (!data) {
       try {
-        data = await _json.default.parse((await this.fs.readFile(options.dataFile, {
+        data = await _json.default.parse(await this.fs.readFile(options.dataFile, {
           encoding: "utf8"
-        })));
+        }));
       } catch (e) {
         throw new Error(`Unable to read data file '${options.dataFile}'. ${e.message}`);
       }
@@ -240,16 +240,20 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
       const fields = data.fields.filter(f => f.page === i);
 
       for (let field of fields) {
+        if (!field.name) {
+          throw new Error(`Field at index ${i} does not have a 'name' property`);
+        }
+
+        if (!field.rect) {
+          throw new Error(`Field at index ${i} does not have a 'rect' property`);
+        }
+
         const name = field.name;
         const value = field.value;
         const x = field.rect[0];
         const y = field.rect[1];
         const w = field.rect[2] - x;
         const h = field.rect[3] - y;
-
-        if (!name) {
-          throw new Error(`Field at index ${i} does not have a 'name' property`);
-        }
 
         switch (field.type) {
           case "highlight":
@@ -261,31 +265,20 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
               throw new Error(`Field '${name}'; a font file must be specified for 'plaintext' fields`);
             }
 
-            if (value === undefined || value === null) {
-              throw new Error(`Field '${name}' must not be null or undefined`);
-            }
-
             pageContext.q().BT().g(0).Ts(h / 6.0) // Text rise Table 5.2
-            .Tm(1, 0, 0, 1, x, y).Tf(font, options.fontSize).Tj(value.toString()).ET().Q();
+            .Tm(1, 0, 0, 1, x, y).Tf(font, options.fontSize).Tj(" " + ((value === null || value === void 0 ? void 0 : value.toString()) || "")).ET().Q();
             break;
 
           case "qrcode":
-            if (value === undefined || value === null) {
-              throw new Error(`Field '${name}' must not be null or undefined`);
-            }
-
-            if (typeof value === "string" && value.length === 0) {
-              throw new Error(`QR code field '${name}' value must be a non-empty string`);
-            }
-
             const pngFileName = await _tmpPromise.default.tmpName({
               postfix: ".png"
             });
-            await _qrcode.default.toFile(pngFileName, value);
+            await _qrcode.default.toFile(pngFileName, (value === null || value === void 0 ? void 0 : value.toString()) || "12345");
             pageModifier.endContext();
             let imageXObject = this.pdfWriter.createFormXObjectFromPNG(pngFileName);
+            const imageDims = this.pdfWriter.getImageDimensions(pngFileName);
             pageContext = pageModifier.startContext().getContext();
-            pageContext.q().cm(1, 0, 0, 1, x, y).doXObject(imageXObject).Q();
+            pageContext.q().cm(w / imageDims.width, 0, 0, h / imageDims.height, x, y).doXObject(imageXObject).Q();
 
             _fsExtra.default.unlinkSync(pngFileName);
 
@@ -314,15 +307,11 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
               throw new Error("Font file must be specified for signhere fields");
             }
 
-            if (value === undefined || value === null) {
-              throw new Error(`Field '${name}' must not be null or undefined`);
-            }
-
             pageModifier.endContext();
             const gsID = this.createExtGState(0.5);
             const formXObject = this.pdfWriter.createFormXObject(0, 0, w, h);
             const gsName = formXObject.getResourcesDictionary().addExtGStateMapping(gsID);
-            formXObject.getContentContext().q().gs(gsName).rg(1, 0.6, 1).m(0, halfH).l(halfH, 0).l(w, 0).l(w, h).l(halfH, h).f().G(0).J(0).w(1).m(halfH, h).l(0, halfH).l(halfH, 0).S().w(2).m(halfH, 0).l(w, 0).l(w, h).l(halfH, h).S().BT().g(0).Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0).Tf(font, 12).Tj(`Sign Here ${value.toString()}`).ET().Q();
+            formXObject.getContentContext().q().gs(gsName).rg(1, 0.6, 1).m(0, halfH).l(halfH, 0).l(w, 0).l(w, h).l(halfH, h).f().G(0).J(0).w(1).m(halfH, h).l(0, halfH).l(halfH, 0).S().w(2).m(halfH, 0).l(w, 0).l(w, h).l(halfH, h).S().BT().g(0).Tm(1, 0, 0, 1, halfH, halfH - fontDims.height / 2.0).Tf(font, 12).Tj(`Sign Here ${(value === null || value === void 0 ? void 0 : value.toString()) || ""}`).ET().Q();
             this.pdfWriter.endFormXObject(formXObject);
             pageContext = pageModifier.startContext().getContext();
             const q = Math.PI / 4.0; // 45 degrees
@@ -406,6 +395,33 @@ let PDFTool = (0, _autobindDecorator.default)(_class = class PDFTool {
     }
 
     this.pdfWriter.end();
+  }
+
+  async merge(options) {
+    (0, _assert.default)(options.fromJsonFile, "A from JSON file must be given");
+    (0, _assert.default)(options.toJsonFile, "A from JSON file must be given");
+
+    const fromData = _json.default.parse(await this.fs.readFile(options.fromJsonFile));
+
+    const toData = _json.default.parse(await this.fs.readFile(options.toJsonFile));
+
+    const toFieldMap = new Map(toData.fields.map(field => [field.name, field]));
+
+    for (const fromField of fromData.fields) {
+      let toField = toFieldMap.get(fromField.name);
+
+      if (toField) {
+        toField.rect = fromField.rect;
+        toField.page = fromField.page;
+      } else {
+        toField = { ...fromField
+        };
+        toData.fields.push(toField);
+        toFieldMap.set(toField.name, toField);
+      }
+    }
+
+    await this.fs.writeFile(options.toJsonFile, _json.default.stringify(toData, undefined, "  "));
   }
 
   async run(argv) {
@@ -497,6 +513,23 @@ Strips any AcroForm and page annotations from the document.
         return await this.strip({
           pdfFile: args._[0],
           outputFile: args["output-file"]
+        });
+
+      case "merge":
+        if (args.help) {
+          this.log.info(`
+  Usage: ${this.toolName} merge <from-json-file> <to-json-file>
+
+  Notes:
+  Merges the pages and rectangles and any new entries from one JSON5 data file another.
+  The merge will never delete fields, only add or modify them.
+  `);
+          return 0;
+        }
+
+        return await this.merge({
+          fromJsonFile: args._[0],
+          toJsonFile: args._[1]
         });
 
       case "watermark":
